@@ -26,9 +26,13 @@ def upgrade() -> None:
                type_=sa.UUID(),
                nullable=True,
                postgresql_using='resource_id::uuid')
-    op.add_column('evidence', sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False))
-    op.add_column('runs', sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False))
-    op.add_column('targets', sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False))
+    for table in ('evidence', 'runs', 'targets'):
+        op.add_column(
+            table,
+            sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+        )
+        op.execute(f'UPDATE {table} SET updated_at = created_at WHERE updated_at IS NULL')
+        op.alter_column(table, 'updated_at', nullable=False)
     # ### end Alembic commands ###
 
 
@@ -41,6 +45,6 @@ def downgrade() -> None:
     op.alter_column('approvals', 'resource_id',
                existing_type=sa.UUID(),
                type_=sa.VARCHAR(length=64),
-               nullable=False,
-               postgresql_using='resource_id::varchar')
+               nullable=True,
+               postgresql_using='resource_id::text')
     # ### end Alembic commands ###
