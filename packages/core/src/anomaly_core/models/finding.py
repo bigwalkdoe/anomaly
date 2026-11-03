@@ -6,7 +6,6 @@ from enum import Enum, StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
-    JSON,
     UUID,
     Boolean,
     DateTime,
@@ -22,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from anomaly_core.db import Base
+from anomaly_core.types import JSONType as JSON
 
 if TYPE_CHECKING:
     from .engagement import Engagement, Target
@@ -152,6 +152,12 @@ class Evidence(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
         index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
     finding: Mapped[Finding | None] = relationship(
