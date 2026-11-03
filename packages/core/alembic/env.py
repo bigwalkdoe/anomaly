@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from anomaly_core.config import get_settings
 from anomaly_core.db import Base
+import anomaly_core.models  # noqa: F401  (populate Base.metadata)
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
