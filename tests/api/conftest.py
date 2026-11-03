@@ -19,3 +19,12 @@ async def client(reset_db):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+from anomaly_core.db import SessionLocal
+
+
+@pytest_asyncio.fixture
+async def db_session(reset_db):
+    async with SessionLocal() as session:
+        yield session

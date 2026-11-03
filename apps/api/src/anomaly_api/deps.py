@@ -6,8 +6,9 @@ from typing import Annotated
 
 from anomaly_core.auth import decode_token
 from anomaly_core.db import SessionLocal
-from anomaly_core.models import RoleName, User
-from fastapi import Depends, HTTPException, status
+from anomaly_core.models import Engagement, RoleName, User
+from anomaly_core.rbac import engagement_accessible
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,5 +68,32 @@ def require_role(*roles: RoleName) -> Callable[..., Awaitable[User]]:
                 detail="Insufficient role",
             )
         return user
+
+    return dependency
+
+
+def require_engagement_access(
+    engagement_id_param: str = "engagement_id",
+    min_role: RoleName = RoleName.client_viewer,
+) -> Callable[..., Awaitable[Engagement]]:
+    async def dependency(
+        request: Request,
+        user: CurrentUser,
+        db: DbSession,
+    ) -> Engagement:
+        engagement_id = request.path_params.get(engagement_id_param)
+        if engagement_id is None:
+            # try to get from kwargs if passed differently
+            raise HTTPException(status_code=400, detail="Missing engagement_id")
+        try:
+            engagement_uuid = uuid.UUID(str(engagement_id))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid engagement_id")
+        engagement = await db.get(Engagement, engagement_uuid)
+        if engagement is None:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        if not await engagement_accessible(db, user, engagement, min_role=min_role):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return engagement
 
     return dependency
