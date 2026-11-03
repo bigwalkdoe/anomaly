@@ -29,6 +29,7 @@ from .run import (
     Run,
     RunStatus,
 )
+from .token import RefreshToken
 from .user import (
     Permission,
     Role,
@@ -71,4 +72,5 @@ __all__ = [
     "Playbook",
     "PlaybookStep",
     "RoleName",
+    "RefreshToken",
 ]
