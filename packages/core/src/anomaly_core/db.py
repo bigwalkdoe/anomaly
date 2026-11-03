@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from anomaly_core.config import get_settings
+from anomaly_core.types import JSON, JSONType  # noqa: F401  (re-export for convenience)
 
 settings = get_settings()
 

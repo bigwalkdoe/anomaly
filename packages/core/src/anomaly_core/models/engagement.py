@@ -212,6 +212,12 @@ class Target(Base):
         nullable=False,
         index=True,
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
     engagement: Mapped[Engagement] = relationship(
         "Engagement", back_populates="targets", lazy="selectin"
