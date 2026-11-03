@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import UUID
 
+from anomaly_core.audit import AuditService
 from anomaly_core.models import Engagement, EngagementMember, EngagementMode, RoleName, Scope
-from anomaly_core.rbac import add_member, engagement_accessible
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
@@ -45,7 +44,16 @@ async def create_engagement(payload: dict, user: CurrentUser, db: DbSession):
     db.add(engagement)
     await db.flush()
     db.add(Scope(engagement_id=engagement.id))
-    await db.add(EngagementMember(engagement_id=engagement.id, user_id=user.id, role=RoleName.admin))
+    db.add(EngagementMember(engagement_id=engagement.id, user_id=user.id, role=RoleName.admin))
+    await AuditService.log(
+        actor_id=user.id,
+        action="engagement.create",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        metadata={"name": engagement.name},
+        db=db,
+    )
     await db.commit()
     await db.refresh(engagement)
     return {"id": str(engagement.id), "name": engagement.name}
