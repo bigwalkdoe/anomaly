@@ -13,6 +13,7 @@ from .engagement import (
     TargetStatus,
     TargetType,
 )
+from .membership import EngagementMember
 from .finding import (
     Evidence,
     EvidenceType,
@@ -73,4 +74,5 @@ __all__ = [
     "PlaybookStep",
     "RoleName",
     "RefreshToken",
+    "EngagementMember",
 ]
