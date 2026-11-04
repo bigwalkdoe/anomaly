@@ -109,3 +109,8 @@ async def record_scope_warning(*args, **kwargs):
     from anomaly_core import audit
 
     return await audit.AuditService.log(*args, **kwargs)
+
+
+def parse_cidr(cidr: str):
+    """Basic CIDR parsing stub"""
+    return cidr
