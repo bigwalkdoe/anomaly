@@ -39,3 +39,16 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         return response
+
+
+from fastapi import HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+
+
+async def http_exception_handler(request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"success": False, "error": exc.detail})
+
+
+async def validation_exception_handler(request, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content={"success": False, "error": "Validation Error", "detail": exc.errors()})
