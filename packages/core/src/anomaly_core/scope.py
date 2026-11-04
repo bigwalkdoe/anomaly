@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import ipaddress
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 
 @dataclass
@@ -18,7 +19,51 @@ def _normalize_target(target: str) -> str:
     return t
 
 
-def check_scope(engagement, requested_targets: Iterable[str], scope_entries=None, db=None) -> ScopeCheckResult:
+def _parse_ip_target(value: str):
+    """Try to parse a target string as an IP address or network.
+
+    Returns an ipaddress.IPv4Network/IPv6Network or IPv4Address/IPv6Address,
+    or None if it's not an IP-based target (i.e., a domain name).
+    """
+    v = str(value).strip().lower()
+    if not v:
+        return None
+    try:
+        return ipaddress.ip_network(v, strict=False)
+    except ValueError:
+        try:
+            return ipaddress.ip_address(v)
+        except ValueError:
+            return None
+
+
+def _addresses_match(t: str, i: str) -> bool:
+    """Check if two targets match.
+
+    If both are IP-based, uses ipaddress containment (subnet-of).
+    If either is a domain, falls back to existing domain suffix matching.
+    """
+    t_ip = _parse_ip_target(t)
+    i_ip = _parse_ip_target(i)
+    if t_ip is not None and i_ip is not None:
+        # Check containment either way, including equality
+        try:
+            return t_ip.subnet_of(i_ip) or i_ip.subnet_of(t_ip)
+        except Exception:
+            # fallback: compare string representations
+            return t == i
+    # Domain-style fallback (existing behavior)
+    if not i:
+        return False
+    return t == i or t.endswith("." + i) or i.endswith("." + t)
+
+
+def check_scope(
+    engagement,
+    requested_targets: Iterable[str],
+    scope_entries=None,
+    db=None,
+) -> ScopeCheckResult:
     normalized_requested = [_normalize_target(t) for t in requested_targets]
 
     in_scope_entries: list[str] = []
@@ -56,12 +101,12 @@ def check_scope(engagement, requested_targets: Iterable[str], scope_entries=None
                 for entry in entries or []:
                     try:
                         val = _normalize_target(getattr(entry, "target_value", ""))
-                        kind = getattr(entry, "kind")
+                        kind = entry.kind
                         kind_str = str(kind)
                         if "out" in kind_str:
                             out_scope_entries.append(val)
                             continue
-                        if "ScopeEntryKind.in_" in kind_str or (getattr(kind, "value", None) == "in"):
+                        if "in" in kind_str and "out" not in kind_str:
                             in_scope_entries.append(val)
                             continue
                     except Exception:
@@ -83,7 +128,7 @@ def check_scope(engagement, requested_targets: Iterable[str], scope_entries=None
                 for i in in_scope_entries:
                     if not i:
                         continue
-                    if t == i or t.endswith("." + i) or i.endswith("." + t):
+                    if _addresses_match(t, i):
                         is_in = True
                         break
                 if is_in:
@@ -91,12 +136,11 @@ def check_scope(engagement, requested_targets: Iterable[str], scope_entries=None
                 else:
                     out_of_scope.append(t)
             else:
-                out_of_scope.append(t)  # if only out-of-scope defined, others might be in scope? depends
+                out_of_scope.append(t)
     else:
         # No explicit scope defined - warn on everything per warn-and-log behavior
         for t in normalized_requested:
             out_of_scope.append(t)
-            # also put in in_scope? test says "scope_warning=true" and logged as warning
 
     return ScopeCheckResult(
         in_scope=in_scope,
@@ -112,5 +156,8 @@ async def record_scope_warning(*args, **kwargs):
 
 
 def parse_cidr(cidr: str):
-    """Basic CIDR parsing stub"""
-    return cidr
+    """Parse a CIDR string into an ipaddress.IPv4Network or ipaddress.IPv6Network."""
+    try:
+        return ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        return None
