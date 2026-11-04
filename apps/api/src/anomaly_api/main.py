@@ -12,9 +12,99 @@ from anomaly_core.db import SessionLocal
 from anomaly_core.rbac import ensure_default_rbac
 
 from anomaly_api.middleware import http_exception_handler, validation_exception_handler
-
 from anomaly_api.middleware import RateLimitMiddleware, RequestIDMiddleware
-from anomaly_api.routers import audit, auth, dashboard, engagements, findings, health, notifications, vulnerabilities, evidence, runs, search, stats, tags, upload, users, webhooks, ws, playbooks
+from anomaly_api.routers import (
+    audit,
+    auth,
+    dashboard,
+    engagements,
+    findings,
+    health,
+    notifications,
+    vulnerabilities,
+    evidence,
+    runs,
+    search,
+    stats,
+    tags,
+    upload,
+    users,
+    webhooks,
+    ws,
+    playbooks,
+)
+
+
+tags_metadata = [
+    {
+        "name": "health",
+        "description": "Health check and version endpoints for monitoring.",
+    },
+    {
+        "name": "auth",
+        "description": "Authentication: register, login, refresh, logout, token verification.",
+    },
+    {
+        "name": "engagements",
+        "description": "Engagement CRUD, scope management, and target assignment.",
+    },
+    {
+        "name": "findings",
+        "description": "Finding management: create, read, update, status transitions, delete.",
+    },
+    {
+        "name": "runs",
+        "description": "Tool run management: enqueue, status, logs, scope warnings.",
+    },
+    {
+        "name": "audit",
+        "description": "Immutable audit log: list, filter by engagement, access control.",
+    },
+    {
+        "name": "users",
+        "description": "User management and profile endpoints.",
+    },
+    {
+        "name": "stats",
+        "description": "Platform-wide statistics and metrics.",
+    },
+    {
+        "name": "dashboard",
+        "description": "Dashboard overview with engagement and severity summaries.",
+    },
+    {
+        "name": "tags",
+        "description": "Tag management for categorizing findings and engagements.",
+    },
+    {
+        "name": "webhooks",
+        "description": "Webhook subscription and delivery management.",
+    },
+    {
+        "name": "websocket",
+        "description": "Real-time WebSocket connections for run log streaming.",
+    },
+    {
+        "name": "playbooks",
+        "description": "Playbook CRUD: multi-step tool execution workflows.",
+    },
+    {
+        "name": "upload",
+        "description": "File upload to MinIO evidence store.",
+    },
+    {
+        "name": "search",
+        "description": "Full-text search across engagements and findings.",
+    },
+    {
+        "name": "notifications",
+        "description": "Notification center: list, create, mark as read.",
+    },
+    {
+        "name": "vulnerabilities",
+        "description": "Vulnerability summary and severity breakdowns.",
+    },
+]
 
 
 @asynccontextmanager
@@ -28,9 +118,23 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Anomaly API",
     version="0.1.0",
-    description="Anomaly - Penetration Testing and Cyber Operations Platform",
+    description=(
+        "Anomaly - Penetration Testing and Cyber Operations Platform\n\n"
+        "## Authentication\n"
+        "Most endpoints require a Bearer JWT access token. Obtain one via `/api/auth/login`.\n"
+        "Refresh tokens are rotated on use and can be revoked via `/api/auth/logout`.\n\n"
+        "## Authorization\n"
+        "Access is role-based (admin, pentester, client_viewer) and scoped per engagement.\n"
+        "Cross-engagement access returns 404 to avoid enumeration.\n\n"
+        "## Scope Enforcement\n"
+        "Tool runs are checked against engagement scope before execution. Out-of-scope "
+        "targets are logged with a warning and the run is marked with `scope_warning=true`.\n\n"
+        "## Audit Trail\n"
+        "All state-changing actions are recorded in an immutable audit log.\n"
+    ),
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_tags=tags_metadata,
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -63,11 +167,3 @@ app.include_router(search.router)
 app.include_router(notifications.router)
 app.include_router(evidence.router)
 app.include_router(vulnerabilities.router)
-app.include_router(notifications.router)
-app.include_router(evidence.router)
-app.include_router(search.router)
-app.include_router(notifications.router)
-app.include_router(evidence.router)
-app.include_router(vulnerabilities.router)
-app.include_router(notifications.router)
-app.include_router(evidence.router)
