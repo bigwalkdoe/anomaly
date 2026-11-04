@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from anomaly_api.middleware import http_exception_handler, validation_exception_handler
 
 from anomaly_api.middleware import RateLimitMiddleware, RequestIDMiddleware
-from anomaly_api.routers import audit, auth, engagements, findings, health, runs, search, stats, tags, upload, users, webhooks
+from anomaly_api.routers import audit, auth, dashboard, engagements, findings, health, runs, search, stats, tags, upload, users, webhooks
 
 app = FastAPI(
     title="Anomaly API",
@@ -37,6 +37,7 @@ app.include_router(runs.router)
 app.include_router(audit.router)
 app.include_router(users.router)
 app.include_router(stats.router)
+app.include_router(dashboard.router)
 app.include_router(tags.router)
 app.include_router(webhooks.router)
 app.include_router(upload.router)
