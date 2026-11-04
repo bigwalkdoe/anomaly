@@ -53,7 +53,8 @@ async def test_create_user(session):
 
 @pytest.mark.asyncio
 async def test_engagement_defaults(session):
-    user = User(email="owner@example.com", name="Owner", password_hash="x")
+    import uuid
+    user = User(email=f"owner-{uuid.uuid4()}@example.com", name="Owner", password_hash="x")
     session.add(user)
     await session.flush()
     engagement = Engagement(name="Test Engagement", owner_id=user.id)
