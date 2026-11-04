@@ -14,7 +14,7 @@ from anomaly_core.rbac import ensure_default_rbac
 from anomaly_api.middleware import http_exception_handler, validation_exception_handler
 
 from anomaly_api.middleware import RateLimitMiddleware, RequestIDMiddleware
-from anomaly_api.routers import audit, auth, dashboard, engagements, findings, health, notifications, runs, search, stats, tags, upload, users, webhooks
+from anomaly_api.routers import audit, auth, dashboard, engagements, findings, health, notifications, vulnerabilities, evidence, runs, search, stats, tags, upload, users, webhooks
 
 
 @asynccontextmanager
@@ -59,5 +59,13 @@ app.include_router(webhooks.router)
 app.include_router(upload.router)
 app.include_router(search.router)
 app.include_router(notifications.router)
+app.include_router(evidence.router)
+app.include_router(vulnerabilities.router)
+app.include_router(notifications.router)
+app.include_router(evidence.router)
 app.include_router(search.router)
 app.include_router(notifications.router)
+app.include_router(evidence.router)
+app.include_router(vulnerabilities.router)
+app.include_router(notifications.router)
+app.include_router(evidence.router)
