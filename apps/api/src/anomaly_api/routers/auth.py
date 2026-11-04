@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from anomaly_core.auth import (
     create_access_token,
@@ -13,6 +13,7 @@ from anomaly_core.auth import (
     verify_password,
 )
 from anomaly_core.models import Role, RoleName, User
+from anomaly_core.rbac import ensure_default_rbac
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
@@ -27,19 +28,10 @@ from anomaly_api.schemas.auth import (
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-_DEFAULT_ROLES = {
-    RoleName.admin: "Full platform administrator",
-    RoleName.pentester: "Runs tools and manages findings",
-    RoleName.client_viewer: "Read-only access to an engagement",
-}
-
 
 async def _ensure_roles(db: DbSession) -> None:
-    existing = set((await db.scalars(select(Role.name))).all())
-    for name, description in _DEFAULT_ROLES.items():
-        if name not in existing:
-            db.add(Role(name=name, description=description))
-    await db.flush()
+    """Seed roles and their default permissions (idempotent, request-scoped)."""
+    await ensure_default_rbac(db)
 
 
 def _user_response(user: User) -> UserResponse:
@@ -132,12 +124,12 @@ async def me(user: CurrentUser) -> UserResponse:
 
 
 @router.get("/verify")
-async def verify_token(payload: dict = None):
+async def verify_token(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     """Basic token verification endpoint for client-side checks"""
     return {"valid": True}
 
 
 @router.post("/logout", status_code=204)
-async def logout_endpoint():
+async def logout_endpoint() -> None:
     # Client-side token revocation
     return None
