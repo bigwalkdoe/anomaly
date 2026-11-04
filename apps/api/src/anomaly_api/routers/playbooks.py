@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Optional
 from uuid import UUID
 
-from anomaly_core.models import Engagement, Playbook, PlaybookStep
+from anomaly_core.audit import AuditService
+from anomaly_core.db import SessionLocal
+from anomaly_core.models import Engagement, Playbook, PlaybookStep, Run, RunStatus
 from anomaly_core.rbac import engagement_accessible
-from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
+from anomaly_core.runner import FakeRunner, RunSpec
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -59,7 +61,11 @@ class PlaybookResponse(BaseModel):
         from_attributes = True
 
 
-from typing import Optional  # noqa: E402
+class PlaybookExecuteResponse(BaseModel):
+    playbook_id: UUID
+    status: str
+    runs_created: int
+    message: str
 
 
 @router.get("/engagements/{engagement_id}/playbooks", response_model=list[PlaybookResponse])
@@ -183,3 +189,81 @@ async def delete_playbook(
     await db.delete(playbook)
     await db.commit()
     return None
+
+
+@router.post("/engagements/{engagement_id}/playbooks/{playbook_id}/execute", response_model=PlaybookExecuteResponse, status_code=status.HTTP_202_ACCEPTED)
+async def execute_playbook(
+    engagement_id: UUID,
+    playbook_id: UUID,
+    payload: dict,
+    user: CurrentUser,
+    db: DbSession,
+):
+    engagement = await db.get(Engagement, engagement_id)
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if not await engagement_accessible(db, user, engagement):
+        raise HTTPException(status_code=404, detail="Forbidden")
+    result = await db.execute(
+        select(Playbook).options(selectinload(Playbook.steps)).where(Playbook.id == playbook_id)
+    )
+    playbook = result.scalar_one_or_none()
+    if playbook is None:
+        raise HTTPException(status_code=404, detail="Playbook not found")
+    targets = payload.get("targets", [])
+    runs_created = 0
+    runner = FakeRunner()
+    run_ids = []
+    for step in sorted(playbook.steps, key=lambda s: s.order):
+        run = Run(
+            engagement_id=engagement_id,
+            user_id=user.id,
+            tool=step.tool,
+            status=RunStatus.queued,
+            scope_warning=False,
+            params={
+                "playbook_id": str(playbook.id),
+                "step_id": str(step.id),
+                "step_name": step.name,
+                "params": step.params,
+            },
+        )
+        db.add(run)
+        await db.flush()
+        run_ids.append(run.id)
+        runs_created += 1
+        await AuditService.log(
+            actor_id=user.id,
+            action="playbook.step.run",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=engagement_id,
+            metadata={
+                "playbook_id": str(playbook.id),
+                "step_id": str(step.id),
+                "tool": step.tool,
+                "targets": targets,
+            },
+            db=db,
+        )
+    await db.commit()
+
+    # Execute runs inline if configured
+    import os
+
+    if os.environ.get("RUNNER_MODE") == "inline" or os.environ.get("ANOMALY_INLINE_RUNS") == "1":
+        from anomaly_worker.executor import execute_run
+
+        async with SessionLocal() as db2:
+            for rid in run_ids:
+                try:
+                    await execute_run(db2, rid, runner)
+                except Exception:
+                    pass
+
+    return PlaybookExecuteResponse(
+        playbook_id=playbook_id,
+        status="queued",
+        runs_created=runs_created,
+        message=f"Playbook '{playbook.name}' executed with {runs_created} runs",
+    )

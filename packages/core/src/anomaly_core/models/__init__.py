@@ -25,12 +25,9 @@ from .finding import (
     ReportStatus,
 )
 from .finding import Tag
-from .run import (
-    Playbook,
-    PlaybookStep,
-    Run,
-    RunStatus,
-)
+from .playbook import Playbook
+from .playbook_step import PlaybookStep
+from .run import Run, RunStatus
 from .token import RefreshToken
 from .user import (
     Permission,
