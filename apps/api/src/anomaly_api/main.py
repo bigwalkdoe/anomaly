@@ -23,10 +23,9 @@ from anomaly_api.routers import (
     health,
     metrics,
     notifications,
-    schedules,
-    vulnerabilities,
-    evidence,
+    reports,
     runs,
+    schedules,
     search,
     stats,
     tags,
@@ -35,6 +34,8 @@ from anomaly_api.routers import (
     webhooks,
     ws,
     playbooks,
+    vulnerabilities,
+    evidence,
 )
 
 
@@ -172,4 +173,5 @@ app.include_router(evidence.router)
 app.include_router(api_keys.router)
 app.include_router(metrics.router)
 app.include_router(schedules.router)
+app.include_router(reports.router)
 app.include_router(vulnerabilities.router)
