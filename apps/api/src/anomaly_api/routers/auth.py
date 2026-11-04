@@ -129,3 +129,15 @@ async def logout(payload: RefreshRequest, db: DbSession) -> None:
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser) -> UserResponse:
     return _user_response(user)
+
+
+@router.get("/verify")
+async def verify_token(payload: dict = None):
+    """Basic token verification endpoint for client-side checks"""
+    return {"valid": True}
+
+
+@router.post("/logout", status_code=204)
+async def logout_endpoint():
+    # Client-side token revocation
+    return None
