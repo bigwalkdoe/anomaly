@@ -5,7 +5,7 @@ from uuid import UUID
 from anomaly_core.audit import get_audit_log
 from anomaly_core.models import Engagement, RoleName
 from anomaly_core.rbac import engagement_accessible, has_role
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from anomaly_api.deps import CurrentUser, DbSession
 

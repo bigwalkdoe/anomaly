@@ -9,6 +9,8 @@ import typer
 from rich.table import Table
 from rich.console import Console
 
+from anomaly_cli.commands.dashboard import app as dashboard_app
+
 app = typer.Typer(name="anomaly", help="Anomaly CLI")
 console = Console()
 
@@ -99,6 +101,8 @@ def findings_list(engagement_id: str):
         table.add_row(it["id"][:8], it["title"], it["severity"], it["status"])
     console.print(table)
 
+
+app.add_typer(dashboard_app, name="dashboard")
 
 @app.command()
 def version():
