@@ -14,6 +14,7 @@ from anomaly_core.rbac import ensure_default_rbac
 from anomaly_api.middleware import http_exception_handler, validation_exception_handler
 from anomaly_api.middleware import RateLimitMiddleware, RequestIDMiddleware
 from anomaly_api.routers import (
+    api_keys,
     audit,
     auth,
     dashboard,
@@ -166,4 +167,5 @@ app.include_router(upload.router)
 app.include_router(search.router)
 app.include_router(notifications.router)
 app.include_router(evidence.router)
+app.include_router(api_keys.router)
 app.include_router(vulnerabilities.router)
