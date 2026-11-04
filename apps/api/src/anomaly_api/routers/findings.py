@@ -161,3 +161,26 @@ async def delete_finding(finding_id: UUID, user: CurrentUser, db: DbSession):
     await db.delete(finding)
     await db.commit()
     return None
+
+
+@router.post("/api/engagements/{engagement_id}/findings/bulk")
+async def bulk_create_findings(
+    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
+    payload: dict,
+    db: DbSession,
+    user: CurrentUser,
+):
+    findings = []
+    for item in payload.get("findings", []):
+        finding = Finding(
+            engagement_id=engagement.id,
+            title=item.get("title", ""),
+            severity=FindingSeverity(item.get("severity", "info")),
+            description=item.get("description", ""),
+            reporter_id=user.id,
+            fingerprint=f"{engagement.id}:{item.get('title')}:{uuid4()}",
+        )
+        db.add(finding)
+        findings.append(finding)
+    await db.commit()
+    return {"created": len(findings)}
