@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from anomaly_api.middleware import RateLimitMiddleware
-from anomaly_api.routers import audit, auth, engagements, findings, health, runs, users
+from anomaly_api.routers import audit, auth, engagements, findings, health, runs, stats, users
 
 app = FastAPI(title="Anomaly API", version="0.1.0")
 app.add_middleware(RateLimitMiddleware)
@@ -15,3 +15,4 @@ app.include_router(findings.router)
 app.include_router(runs.router)
 app.include_router(audit.router)
 app.include_router(users.router)
+app.include_router(stats.router)
