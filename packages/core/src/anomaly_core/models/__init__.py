@@ -34,6 +34,7 @@ from .token import RefreshToken
 from .user import (
     Permission,
     Role,
+    APIKey,
     RoleName,
     User,
     UserRole,
@@ -74,5 +75,6 @@ __all__ = [
     "PlaybookStep",
     "RoleName",
     "RefreshToken",
+    "APIKey",
     "EngagementMember",
 ]
