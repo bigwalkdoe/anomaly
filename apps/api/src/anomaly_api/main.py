@@ -23,6 +23,7 @@ from anomaly_api.routers import (
     health,
     metrics,
     notifications,
+    schedules,
     vulnerabilities,
     evidence,
     runs,
@@ -170,4 +171,5 @@ app.include_router(notifications.router)
 app.include_router(evidence.router)
 app.include_router(api_keys.router)
 app.include_router(metrics.router)
+app.include_router(schedules.router)
 app.include_router(vulnerabilities.router)
