@@ -24,15 +24,15 @@ router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
 
 @router.get("")
-async def list_engagements(user: CurrentUser, db: DbSession):
+async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, offset: int = 0):
     if any(r.name == RoleName.admin for r in user.roles):
-        engagements = (await db.scalars(select(Engagement))).all()
+        engagements = (await db.scalars(select(Engagement).offset(offset).limit(limit))).all()
     else:
         members = (await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))).all()
         eng_ids = [m.engagement_id for m in members]
         if not eng_ids:
             return []
-        engagements = (await db.scalars(select(Engagement).where(Engagement.id.in_(eng_ids)))).all()
+        engagements = (await db.scalars(select(Engagement).where(Engagement.id.in_(eng_ids)).offset(offset).limit(limit))).all()
     return [
         {
             "id": str(e.id),
@@ -184,3 +184,14 @@ async def add_target(
     await db.commit()
     await db.refresh(target)
     return {"id": str(target.id), "value": target.value}
+
+
+@router.get("/{engagement_id}/export")
+async def export_engagement(
+    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id"))],
+):
+    from anomaly_reporting import ReportGenerator
+
+    gen = ReportGenerator()
+    md = gen.generate_markdown(engagement.name, [])
+    return {"format": "markdown", "content": md}

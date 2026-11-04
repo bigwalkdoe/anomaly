@@ -24,6 +24,7 @@ from .finding import (
     ReportFormat,
     ReportStatus,
 )
+from .finding import Tag
 from .run import (
     Playbook,
     PlaybookStep,
@@ -73,8 +74,10 @@ __all__ = [
     "ApprovalStatus",
     "Playbook",
     "PlaybookStep",
+    "Tag",
     "RoleName",
     "RefreshToken",
     "APIKey",
     "EngagementMember",
 ]
+from .finding import Tag  # noqa

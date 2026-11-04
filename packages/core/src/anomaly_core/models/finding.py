@@ -225,3 +225,11 @@ class Report(Base):
     approver: Mapped[User | None] = relationship(
         "User", foreign_keys=[approver_id], lazy="selectin"
     )
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    color: Mapped[str] = mapped_column(String(20), default="#666")
