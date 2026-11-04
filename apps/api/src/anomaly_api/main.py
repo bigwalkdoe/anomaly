@@ -1,14 +1,29 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 
+from anomaly_core.db import SessionLocal
+from anomaly_core.rbac import ensure_default_rbac
+
 from anomaly_api.middleware import http_exception_handler, validation_exception_handler
 
 from anomaly_api.middleware import RateLimitMiddleware, RequestIDMiddleware
 from anomaly_api.routers import audit, auth, dashboard, engagements, findings, health, notifications, runs, search, stats, tags, upload, users, webhooks
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Seed default RBAC roles/permissions at startup (idempotent)."""
+    async with SessionLocal() as session:
+        await ensure_default_rbac(session)
+    yield
+
 
 app = FastAPI(
     title="Anomaly API",
@@ -16,6 +31,7 @@ app = FastAPI(
     description="Anomaly - Penetration Testing and Cyber Operations Platform",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,

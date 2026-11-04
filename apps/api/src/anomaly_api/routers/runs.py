@@ -17,7 +17,7 @@ router = APIRouter(tags=["runs"])
 
 @router.get("/api/engagements/{engagement_id}/runs")
 async def list_runs(
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id"))],
+    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
     db: DbSession,
 ):
     runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement.id))).all()
@@ -104,6 +104,6 @@ async def get_run(run_id: str, user: CurrentUser, db: DbSession):
         raise HTTPException(status_code=404, detail="Run not found")
     from anomaly_core.rbac import engagement_accessible
 
-    if not await engagement_accessible(db, user, engagement):
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
         raise HTTPException(status_code=404, detail="Run not found")
     return {"id": str(run.id), "status": run.status.value, "scope_warning": run.scope_warning}
