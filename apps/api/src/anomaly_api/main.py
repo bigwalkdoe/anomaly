@@ -21,6 +21,7 @@ from anomaly_api.routers import (
     engagements,
     findings,
     health,
+    metrics,
     notifications,
     vulnerabilities,
     evidence,
@@ -168,4 +169,5 @@ app.include_router(search.router)
 app.include_router(notifications.router)
 app.include_router(evidence.router)
 app.include_router(api_keys.router)
+app.include_router(metrics.router)
 app.include_router(vulnerabilities.router)
