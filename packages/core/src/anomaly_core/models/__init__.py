@@ -10,7 +10,7 @@ from anomaly_core.models.engagement import (
 )
 from anomaly_core.models.finding import Evidence, Finding, FindingSeverity, FindingStatus, Report
 from anomaly_core.models.run import Run, RunStatus
-from anomaly_core.models.user import Permission, Role, RoleName, User, UserRole
+from anomaly_core.models.user import Permission, RefreshToken, Role, RoleName, User, UserRole
 
 __all__ = [
     "Approval",
@@ -25,6 +25,7 @@ __all__ = [
     "Permission",
     "Playbook",
     "PlaybookStep",
+    "RefreshToken",
     "Report",
     "Role",
     "RoleName",
