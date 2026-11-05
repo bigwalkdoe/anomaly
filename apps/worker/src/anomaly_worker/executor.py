@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from anomaly_core.audit import AuditService
-from anomaly_core.models.engagement import Scope, ScopeEntry
+from anomaly_core.models.engagement import Scope, ScopeEntry, Target
 from anomaly_core.models.finding import Evidence, Finding, FindingSeverity, FindingStatus
 from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.runner import FakeRunner, RunSpec
@@ -70,22 +70,47 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
         )
     )
 
-    parsed = []
+    parsed: list[dict[str, Any]] = []
+    discovered: list[dict[str, Any]] = []
+    tr = None
     if tool_def and tool_def.parse_output and result.stdout:
         tr = tool_def.parse_output(
             result.stdout, result.stderr, result.exit_code, targets, run.params
         )
-        parsed = tr.parsed_findings
     elif tool_def and tool_def.run_direct:
         tr = await tool_def.run_direct(targets, run.params)
-        parsed = tr.parsed_findings
     else:
         from anomaly_tools.stub import TOOL_REGISTRY
 
         tool_fn = TOOL_REGISTRY.get(run.tool)
         if tool_fn is not None:
             tr = await tool_fn(targets, run.params)
-            parsed = tr.parsed_findings
+    if tr is not None:
+        parsed = tr.parsed_findings
+        discovered = getattr(tr, "discovered_targets", []) or []
+
+    for t in discovered:
+        value = str(t.get("value") or "").strip()
+        if not value:
+            continue
+        ttype = str(t.get("type") or "domain")
+        exists = await db.scalar(
+            select(Target).where(
+                Target.engagement_id == run.engagement_id,
+                Target.value == value,
+                Target.type == ttype,
+            )
+        )
+        if exists is None:
+            db.add(
+                Target(
+                    engagement_id=run.engagement_id,
+                    value=value,
+                    type=ttype,
+                    status=str(t.get("status") or "discovered"),
+                    discovered=bool(t.get("discovered", True)),
+                )
+            )
 
     for f in parsed:
         sev = f.get("severity", "info")

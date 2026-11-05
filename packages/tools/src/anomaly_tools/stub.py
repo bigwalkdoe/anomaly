@@ -11,6 +11,7 @@ class ToolResult:
     exit_code: int = 0
     parsed_findings: list[dict[str, Any]] = field(default_factory=list)
     artifacts: list[str] = field(default_factory=list)
+    discovered_targets: list[dict[str, Any]] = field(default_factory=list)
 
 
 async def run_stub(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:

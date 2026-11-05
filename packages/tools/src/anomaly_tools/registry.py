@@ -8,6 +8,7 @@ from anomaly_tools.ffuf import parse_ffuf_json, run_ffuf
 from anomaly_tools.generic import parse_passthrough, run_not_implemented
 from anomaly_tools.nmap import parse_nmap_xml, run_nmap
 from anomaly_tools.nuclei import parse_nuclei_output, run_nuclei
+from anomaly_tools.recon import parse_recon_output, run_recon
 from anomaly_tools.stub import ToolResult, run_stub
 
 ParseFn = Callable[[str, str, int, list[str], dict[str, Any] | None], ToolResult]
@@ -67,7 +68,20 @@ TOOL_DEFS: dict[str, ToolDefinition] = {
         "burp", "anomaly-tools-burp:dev", parse_passthrough, run_not_implemented
     ),
     "recon": ToolDefinition(
-        "recon", "anomaly-tools-recon:dev", parse_passthrough, run_not_implemented
+        name="recon",
+        image="anomaly-tools-recon:dev",
+        parse_output=lambda stdout, stderr, exit_code, targets, params: parse_recon_output(
+            stdout or "", targets, params
+        ),
+        run_direct=run_recon,
+    ),
+    "httpx": ToolDefinition(
+        name="httpx",
+        image="anomaly-tools-recon:dev",
+        parse_output=lambda stdout, stderr, exit_code, targets, params: parse_recon_output(
+            stdout or "", targets, params
+        ),
+        run_direct=run_recon,
     ),
 }
 
