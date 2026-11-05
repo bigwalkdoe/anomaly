@@ -81,20 +81,17 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         )
 
     tool_params = _tool_params(run)
-    if tool_params.get("allow_risky_options") or any(
-        k in tool_params and k != "allow_risky_options" for k in ("level", "risk") if tool_params.get("allow_risky_options")
-    ):
-        # Log when risky options were explicitly requested (sqlmap safety).
-        if tool_params.get("allow_risky_options"):
-            await AuditService.log(
-                actor_id=run.user_id,
-                action="tool.risky_options",
-                resource_type="run",
-                resource_id=run.id,
-                engagement_id=run.engagement_id,
-                metadata={"tool": run.tool, "params": tool_params},
-                db=db,
-            )
+    # Log when risky options were explicitly requested (sqlmap safety).
+    if tool_params.get("allow_risky_options"):
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="tool.risky_options",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            metadata={"tool": run.tool, "params": tool_params},
+            db=db,
+        )
 
     if runner is None:
         runner = FakeRunner()

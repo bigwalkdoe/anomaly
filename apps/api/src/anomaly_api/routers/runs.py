@@ -63,13 +63,15 @@ async def create_run(
     except Exception:
         eng_loaded = engagement
     result = check_scope(eng_loaded, targets)
+    run_params = dict(payload.params or {})
+    run_params["targets"] = targets  # scope-checked targets must not be overridden
     run = Run(
         engagement_id=engagement.id,
         user_id=user.id,
         tool=payload.tool,
         status=RunStatus.queued,
         scope_warning=result.has_warning,
-        params={"targets": targets, **(payload.params or {})},
+        params=run_params,
     )
     db.add(run)
     await db.flush()
