@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiJson } from "@/lib/api";
-import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -53,44 +56,59 @@ export default function RegisterPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Full Name</label>
-            <input
-              type="text"
-              required
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Email</label>
-            <input
-              type="email"
-              required
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Password</label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {loading ? "Creating account..." : "Create Account"}
-          </button>
+          <Card>
+            <CardHeader>
+              <CardTitle>Create Account</CardTitle>
+              <CardDescription>Join the Anomaly platform</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    type="text"
+                    required
+                    id="name"
+                    className="w-full"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    type="email"
+                    required
+                    id="email"
+                    className="w-full"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    type="password"
+                    required
+                    minLength={8}
+                    id="password"
+                    className="w-full"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full"
+              >
+                {loading ? "Creating account..." : "Create Account"}
+              </Button>
+            </CardFooter>
+          </Card>
         </form>
 
         <p className="text-sm text-center text-muted-foreground">

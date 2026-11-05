@@ -1,13 +1,13 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function fetchApi(path: string, options: RequestInit = {}): Promise<Response> {
-  const cookie = options.headers?.Cookie as string | undefined;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> || {}),
+  };
+  const cookie = headers["Cookie"];
   return fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(cookie ? { Cookie: cookie } : {}),
-      ...options.headers,
-    },
+    headers,
     ...options,
     cache: "no-store",
   });
@@ -21,6 +21,8 @@ async function fetchApiJson<T>(path: string, options: RequestInit = {}): Promise
   }
   return res.json();
 }
+
+export { fetchApiJson as apiJson };
 
 interface Engagement {
   id: string;

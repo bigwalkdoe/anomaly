@@ -1,11 +1,39 @@
 "use client";
-import Link from "next/link";
 
-import { useEffect, useState, useCallback } from "react";
-import { Navbar } from "@/components/Navbar";
-import { apiJson, Engagement, Finding, Run } from "@/lib/api";
+import { Sidebar } from "@/components/layout/layout";
+import { TopNav } from "@/components/layout/layout";
+import { useAuth } from "@/components/AuthContext";
+import { apiJson } from "@/lib/api";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Plus, Play, ArrowRight, Target, Activity, AlertCircle, Trash2 } from "lucide-react";
+
+const MODE_COLORS: Record<string, string> = {
+  own_infra: "bg-blue-100 text-blue-800",
+  bug_bounty: "bg-yellow-100 text-yellow-800",
+  client: "bg-purple-100 text-purple-800",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  closed: "bg-gray-100 text-gray-800",
+  draft: "bg-blue-100 text-blue-800",
+  paused: "bg-yellow-100 text-yellow-800",
+};
+
+const RUN_STATUS_COLORS: Record<string, string> = {
+  queued: "bg-yellow-100 text-yellow-800",
+  running: "bg-blue-100 text-blue-800",
+  succeeded: "bg-green-100 text-green-800",
+  failed: "bg-red-100 text-red-800",
+  cancelled: "bg-gray-100 text-gray-800",
+};
+
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: "bg-red-100 text-red-800",
@@ -15,12 +43,31 @@ const SEVERITY_COLORS: Record<string, string> = {
   info: "bg-gray-100 text-gray-800",
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  active: "bg-green-100 text-green-800",
-  closed: "bg-gray-100 text-gray-800",
-  draft: "bg-blue-100 text-blue-800",
-  paused: "bg-yellow-100 text-yellow-800",
-};
+interface Engagement {
+  id: string;
+  name: string;
+  mode: string;
+  status: string;
+  owner_id: string;
+  client_name?: string | null;
+}
+
+interface Finding {
+  id: string;
+  engagement_id: string;
+  title: string;
+  severity: string;
+  status: string;
+  description: string;
+}
+
+interface Run {
+  id: string;
+  engagement_id: string;
+  tool: string;
+  status: string;
+  scope_warning: boolean;
+}
 
 export default function EngagementDetailPage() {
   const params = useParams();
@@ -31,26 +78,26 @@ export default function EngagementDetailPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     try {
-      const [eng, findRes, runRes] = await Promise.all([
+      const [eng, findings, runs] = await Promise.all([
         apiJson<Engagement>(`/api/engagements/${engagementId}`),
-        apiJson<{ findings: Finding[] } | Finding[]>(`/api/engagements/${engagementId}/findings`),
+        apiJson<Finding[]>(`/api/engagements/${engagementId}/findings`),
         apiJson<Run[]>(`/api/engagements/${engagementId}/runs`),
       ]);
       setEngagement(eng);
-      setFindings(Array.isArray(findRes) ? findRes : findRes.findings || []);
-      setRuns(runRes);
+      setFindings(findings);
+      setRuns(runs);
     } catch (err) {
       console.error("Failed to fetch engagement data:", err);
     } finally {
       setLoading(false);
     }
-  }, [engagementId]);
+  };
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [engagementId]);
 
   const handleCreateRun = async () => {
     try {
@@ -58,7 +105,11 @@ export default function EngagementDetailPage() {
         method: "POST",
         body: JSON.stringify({ tool: "nmap", targets: [] }),
       });
-      fetchData();
+      setRuns([]);
+      setLoading(true);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (err) {
       console.error("Failed to create run:", err);
     }
@@ -77,7 +128,7 @@ export default function EngagementDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
   }
@@ -95,8 +146,9 @@ export default function EngagementDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="container mx-auto px-4 py-8">
+      <TopNav />
+      <Sidebar />
+      <main className="flex-1 ml-64 p-8">
         <header className="mb-8">
           <Link href="/engagements" className="text-sm text-muted-foreground hover:text-primary">
             ← Back to Engagements
@@ -115,29 +167,29 @@ export default function EngagementDetailPage() {
               >
                 Delete Engagement
               </button>
-              <button
+              <Button
                 onClick={handleCreateRun}
                 className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 <Play className="h-4 w-4" /> New Run
-              </button>
+              </Button>
             </div>
           </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            <section className="rounded-lg border border-border bg-card p-6 shadow-sm">
+            <section className="rounded-lg border border-input bg-card p-6 shadow-sm">
               <h2 className="text-lg font-semibold mb-4">Findings ({findings.length})</h2>
               <div className="space-y-3">
                 {findings.length > 0 ? (
                   findings.map((f) => (
-                    <div key={f.id} className="p-3 rounded-md border border-border bg-background">
+                    <div key={f.id} className="p-3 rounded-md border border-input bg-background">
                       <div className="flex justify-between items-start mb-1">
-                        <span className="font-medium">{f.title}</span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          SEVERITY_COLORS[f.severity.toLowerCase()] || "bg-gray-100 text-gray-800"
-                        }`}>
+                        <Link href={`/findings/${f.id}`} className="font-medium hover:text-primary">
+                          {f.title}
+                        </Link>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${SEVERITY_COLORS[f.severity.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
                           {f.severity.toUpperCase()}
                         </span>
                       </div>
@@ -153,17 +205,15 @@ export default function EngagementDetailPage() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-border bg-card p-6 shadow-sm">
+            <section className="rounded-lg border border-input bg-card p-6 shadow-sm">
               <h2 className="text-lg font-semibold mb-4">Runs ({runs.length})</h2>
               <div className="space-y-3">
                 {runs.length > 0 ? (
                   runs.map((run) => (
-                    <div key={run.id} className="p-3 rounded-md border border-border bg-background">
+                    <div key={run.id} className="p-3 rounded-md border border-input bg-background">
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-medium">{run.tool}</span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          STATUS_COLORS[run.status.toLowerCase()] || "bg-gray-100 text-gray-800"
-                        }`}>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RUN_STATUS_COLORS[run.status.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
                           {run.status.toUpperCase()}
                         </span>
                       </div>
@@ -184,7 +234,7 @@ export default function EngagementDetailPage() {
           </div>
 
           <div className="lg:col-span-1">
-            <div className="rounded-lg border border-border bg-card p-6 shadow-sm sticky top-24">
+            <div className="rounded-lg border border-input bg-card p-6 shadow-sm sticky top-24">
               <h3 className="text-lg font-semibold mb-4">Engagement Details</h3>
               <dl className="space-y-4 text-sm">
                 <div className="flex justify-between">
@@ -193,17 +243,23 @@ export default function EngagementDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Mode</dt>
-                  <dd>{engagement.mode.replace("_", " ").toUpperCase()}</dd>
+                  <dd>
+                    <Badge className={MODE_COLORS[engagement.mode] || "bg-gray-100 text-gray-800"}>
+                      {engagement.mode.replace("_", " ").toUpperCase()}
+                    </Badge>
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Status</dt>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[engagement.status.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
+                  <dd>
+                    <Badge className={STATUS_COLORS[engagement.status.toLowerCase()] || "bg-gray-100 text-gray-800"}>
                       {engagement.status.toUpperCase()}
-                    </span>
+                    </Badge>
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Owner</dt>
-                  <dd>{engagement.owner_id.slice(0, 8)}...</dd>
+                  <dd className="font-mono text-xs">{engagement.owner_id.slice(0, 8)}...</dd>
                 </div>
                 {engagement.client_name && (
                   <div className="flex justify-between">

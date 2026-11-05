@@ -1,7 +1,13 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { apiJson, AuthTokens } from "@/lib/api";
+import { apiJson } from "@/lib/api";
+
+interface AuthTokens {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+}
 
 interface AuthContextType {
   token: string | null;
