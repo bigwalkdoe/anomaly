@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator, Callable
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -8,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from anomaly_core.auth import decode_token
 from anomaly_core.db import SessionLocal
+from anomaly_core.models.engagement import Engagement
 from anomaly_core.models.user import User
+from anomaly_core.rbac import engagement_accessible, is_admin
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -47,3 +50,22 @@ def require_role(*roles: str) -> Callable:
         return current_user
 
     return dependency
+
+
+def require_engagement_access(min_role: str = "client_viewer", hide: bool = False) -> Callable:
+    async def dependency(
+        engagement_id: UUID,
+        current_user: Annotated[User, Depends(get_current_user)],
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> Engagement:
+        eng = await db.scalar(select(Engagement).where(Engagement.id == engagement_id))
+        if eng is None:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        if not await engagement_accessible(current_user, engagement_id, min_role, db):
+            if hide:
+                raise HTTPException(status_code=404, detail="Engagement not found")
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return eng
+
+    return dependency
+
