@@ -14,6 +14,7 @@ from .engagement import (
     TargetType,
 )
 from .membership import EngagementMember
+from .mfa import MFASecret
 from .cron_schedule import CronSchedule
 from .finding import (
     Evidence,
@@ -78,5 +79,6 @@ __all__ = [
     "APIKey",
     "EngagementMember",
     "CronSchedule",
+    "MFASecret",
 ]
 from .finding import Tag  # noqa

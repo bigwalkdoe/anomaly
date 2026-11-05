@@ -17,6 +17,7 @@ from anomaly_api.routers import (
     api_keys,
     audit,
     auth,
+    mfa,
     dashboard,
     engagements,
     findings,
@@ -172,6 +173,7 @@ app.include_router(notifications.router)
 app.include_router(evidence.router)
 app.include_router(api_keys.router)
 app.include_router(metrics.router)
+app.include_router(mfa.router)
 app.include_router(schedules.router)
 app.include_router(reports.router)
 app.include_router(vulnerabilities.router)

@@ -12,7 +12,8 @@ from anomaly_core.auth import (
     store_refresh_token,
     verify_password,
 )
-from anomaly_core.models import Role, RoleName, User
+from anomaly_core.mfa import verify_totp, verify_backup_code
+from anomaly_core.models import MFASecret, Role, RoleName, User
 from anomaly_core.rbac import ensure_default_rbac
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -20,6 +21,7 @@ from sqlalchemy import func, select
 from anomaly_api.deps import CurrentUser, DbSession, get_optional_user
 from anomaly_api.schemas.auth import (
     LoginRequest,
+    LoginResponse,
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
@@ -89,17 +91,35 @@ async def register(
     return tokens
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: DbSession) -> TokenResponse:
+@router.post("/login", response_model=LoginResponse)
+async def login(payload: LoginRequest, db: DbSession) -> LoginResponse:
     user = await db.scalar(select(User).where(User.email == payload.email))
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=401, detail="Inactive user")
 
+    # Check if MFA is enabled for this user
+    result = await db.execute(select(MFASecret).where(MFASecret.user_id == user.id))
+    mfa = result.scalar_one_or_none()
+
+    if mfa and mfa.is_enabled:
+        # MFA is enabled - require verification
+        return LoginResponse(
+            mfa_required=True,
+            user_id=str(user.id),
+        )
+
+    # No MFA - issue tokens directly
     tokens = await _issue_tokens(db, user)
     await db.commit()
-    return tokens
+    return LoginResponse(
+        mfa_required=False,
+        access_token=tokens.access_token,
+        refresh_token=tokens.refresh_token,
+        token_type=tokens.token_type,
+        user_id=str(user.id),
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)
