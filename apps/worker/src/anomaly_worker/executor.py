@@ -10,7 +10,7 @@ from anomaly_core.models.finding import Evidence, Finding, FindingSeverity, Find
 from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.runner import FakeRunner, RunSpec
 from anomaly_core.scope import check_scope
-from anomaly_tools.stub import TOOL_REGISTRY
+from anomaly_tools.registry import TOOL_DEFS
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,13 +46,17 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
     if runner is None:
         runner = FakeRunner()
 
+    tool_def = TOOL_DEFS.get(run.tool)
+    image = tool_def.image if tool_def else "anomaly-runner:dev"
+    timeout_s = tool_def.default_timeout_s if tool_def else 300
+
     spec = RunSpec(
         tool=run.tool,
-        image="anomaly-runner:dev",
+        image=image,
         target_values=targets,
         params=run.params or {},
         env={},
-        timeout_s=300,
+        timeout_s=timeout_s,
         network="anomaly-net",
     )
     result = await runner.run(spec)
@@ -66,26 +70,42 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
         )
     )
 
-    tool_fn = TOOL_REGISTRY.get(run.tool)
-    if tool_fn is not None:
-        tr = await tool_fn(targets, run.params)
-        for f in tr.parsed_findings:
-            sev = f.get("severity", "info")
-            try:
-                severity = FindingSeverity(sev)
-            except ValueError:
-                severity = FindingSeverity.INFO
-            db.add(
-                Finding(
-                    engagement_id=run.engagement_id,
-                    title=f.get("title", "Finding"),
-                    severity=severity,
-                    status=FindingStatus.NEW,
-                    description=f.get("description"),
-                    reporter_id=run.user_id,
-                    fingerprint=f"{run.engagement_id}:{run.tool}:{f.get('title', '')}",
-                )
+    parsed = []
+    if tool_def and tool_def.parse_output and result.stdout:
+        tr = tool_def.parse_output(
+            result.stdout, result.stderr, result.exit_code, targets, run.params
+        )
+        parsed = tr.parsed_findings
+    elif tool_def and tool_def.run_direct:
+        tr = await tool_def.run_direct(targets, run.params)
+        parsed = tr.parsed_findings
+    else:
+        from anomaly_tools.stub import TOOL_REGISTRY
+
+        tool_fn = TOOL_REGISTRY.get(run.tool)
+        if tool_fn is not None:
+            tr = await tool_fn(targets, run.params)
+            parsed = tr.parsed_findings
+
+    for f in parsed:
+        sev = f.get("severity", "info")
+        try:
+            severity = FindingSeverity(sev)
+        except ValueError:
+            severity = FindingSeverity.INFO
+        fingerprint = f.get("fingerprint") or f"{run.engagement_id}:{run.tool}:{f.get('title', '')}"
+        db.add(
+            Finding(
+                engagement_id=run.engagement_id,
+                title=f.get("title", "Finding"),
+                severity=severity,
+                status=FindingStatus.NEW,
+                description=f.get("description"),
+                remediation=f.get("remediation"),
+                reporter_id=run.user_id,
+                fingerprint=str(fingerprint),
             )
+        )
 
     run.status = RunStatus.SUCCEEDED if result.exit_code == 0 else RunStatus.FAILED
     run.finished_at = datetime.now(UTC)
