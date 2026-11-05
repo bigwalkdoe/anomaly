@@ -24,6 +24,6 @@ env/
 *.db
 
 # node
-node_modules/.next/
+.next/
 node_modules/
 .env
