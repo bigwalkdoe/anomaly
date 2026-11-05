@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from anomaly_core.config import get_settings
 from anomaly_core.db import Base
 
-# Import models so autogenerate can detect them (populated in Task 3+).
-# from anomaly_core import models  # noqa: F401
+# Import models so autogenerate can detect them.
+from anomaly_core import models  # noqa: F401
 
 config = context.config
 
