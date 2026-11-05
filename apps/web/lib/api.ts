@@ -1,22 +1,20 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export async function apiRequest(
-  path: string,
-  options: RequestInit = {}
-): Promise<Response> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("anomaly_token") : null;
+async function fetchApi(path: string, options: RequestInit = {}): Promise<Response> {
+  const cookie = options.headers?.Cookie as string | undefined;
   return fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(cookie ? { Cookie: cookie } : {}),
       ...options.headers,
     },
     ...options,
+    cache: "no-store",
   });
 }
 
-export async function apiJson<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await apiRequest(path, options);
+async function fetchApiJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetchApi(path, options);
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || `Request failed: ${res.status}`);
@@ -24,16 +22,15 @@ export async function apiJson<T>(path: string, options: RequestInit = {}): Promi
   return res.json();
 }
 
-export interface Engagement {
+interface Engagement {
   id: string;
   name: string;
   mode: string;
   status: string;
   owner_id: string;
-  client_name?: string | null;
 }
 
-export interface Finding {
+interface Finding {
   id: string;
   engagement_id: string;
   title: string;
@@ -42,7 +39,7 @@ export interface Finding {
   description: string;
 }
 
-export interface Run {
+interface Run {
   id: string;
   engagement_id: string;
   tool: string;
@@ -50,16 +47,40 @@ export interface Run {
   scope_warning: boolean;
 }
 
-export interface Stats {
+interface Stats {
   engagements: number;
   findings: number;
   runs: number;
-  critical?: number;
-  high?: number;
 }
 
-export interface AuthTokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
+export async function getStats(): Promise<Stats> {
+  try {
+    return await fetchApiJson<Stats>("/api/stats");
+  } catch {
+    return { engagements: 0, findings: 0, runs: 0 };
+  }
+}
+
+export async function getEngagements(): Promise<Engagement[]> {
+  try {
+    return await fetchApiJson<Engagement[]>("/api/engagements");
+  } catch {
+    return [];
+  }
+}
+
+export async function getFindings(engagementId?: string): Promise<Finding[]> {
+  try {
+    return await fetchApiJson<Finding[]>(`/api/engagements/${engagementId}/findings`);
+  } catch {
+    return [];
+  }
+}
+
+export async function getRuns(engagementId?: string): Promise<Run[]> {
+  try {
+    return await fetchApiJson<Run[]>(`/api/engagements/${engagementId}/runs`);
+  } catch {
+    return [];
+  }
 }

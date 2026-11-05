@@ -47,10 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("anomaly_refresh_token");
   };
 
-  if (isLoading) {
-    return null;
-  }
-
   return (
     <AuthContext.Provider value={{ token, login, logout, isAuthenticated: !!token, isLoading: false }}>
       {children}
