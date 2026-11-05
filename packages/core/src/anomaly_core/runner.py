@@ -14,6 +14,7 @@ class RunSpec:
     timeout_s: int = 300
     network: str | None = None
     resource_limits: dict[str, Any] = field(default_factory=dict)
+    command: list[str] | None = None
 
 
 @dataclass
