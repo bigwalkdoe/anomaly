@@ -1,17 +1,32 @@
 "use client";
+import { useState, useEffect } from "react";
 
-import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
+import { Sidebar } from "@/components/layout/layout";
 import { useAuth } from "@/components/AuthContext";
 import { apiJson } from "@/lib/api";
-import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Play, ArrowRight, Target, Activity, AlertCircle, Trash2 } from "lucide-react";
+import {
+  Plus,
+  Play,
+  ArrowRight,
+  Target,
+  Activity,
+  AlertCircle,
+  Trash2,
+} from "@/components/ui/icons";
 
 const MODE_COLORS: Record<string, string> = {
   own_infra: "bg-blue-100 text-blue-800",
@@ -32,15 +47,6 @@ const RUN_STATUS_COLORS: Record<string, string> = {
   succeeded: "bg-green-100 text-green-800",
   failed: "bg-red-100 text-red-800",
   cancelled: "bg-gray-100 text-gray-800",
-};
-
-
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "bg-red-100 text-red-800",
-  high: "bg-orange-100 text-orange-800",
-  medium: "bg-yellow-100 text-yellow-800",
-  low: "bg-blue-100 text-blue-800",
-  info: "bg-gray-100 text-gray-800",
 };
 
 interface Engagement {
@@ -128,7 +134,7 @@ export default function EngagementDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -146,7 +152,7 @@ export default function EngagementDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav />
+      <TopNav user={{ name: "Admin" }} />
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
         <header className="mb-8">
@@ -189,9 +195,9 @@ export default function EngagementDetailPage() {
                         <Link href={`/findings/${f.id}`} className="font-medium hover:text-primary">
                           {f.title}
                         </Link>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${SEVERITY_COLORS[f.severity.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
+                        <Badge className={MODE_COLORS[f.severity.toLowerCase()] || "bg-gray-100 text-gray-800"}>
                           {f.severity.toUpperCase()}
-                        </span>
+                        </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">{f.description}</p>
                       <span className="text-xs font-medium text-muted-foreground">{f.status}</span>
@@ -243,19 +249,15 @@ export default function EngagementDetailPage() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Mode</dt>
-                  <dd>
-                    <Badge className={MODE_COLORS[engagement.mode] || "bg-gray-100 text-gray-800"}>
-                      {engagement.mode.replace("_", " ").toUpperCase()}
-                    </Badge>
-                  </dd>
+                  <Badge className={MODE_COLORS[engagement.mode] || "bg-gray-100 text-gray-800"}>
+                    {engagement.mode.replace("_", " ").toUpperCase()}
+                  </Badge>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Status</dt>
-                  <dd>
-                    <Badge className={STATUS_COLORS[engagement.status.toLowerCase()] || "bg-gray-100 text-gray-800"}>
-                      {engagement.status.toUpperCase()}
-                    </Badge>
-                  </dd>
+                  <Badge className={STATUS_COLORS[engagement.status.toLowerCase()] || "bg-gray-100 text-gray-800"}>
+                    {engagement.status.toUpperCase()}
+                  </Badge>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Owner</dt>

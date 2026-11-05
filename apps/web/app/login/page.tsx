@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthContext";
-import { ShieldCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ShieldCheck } from "@/components/ui/icons";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

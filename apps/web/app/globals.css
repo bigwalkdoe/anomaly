@@ -11,7 +11,7 @@ html {
 body {
   margin: 0;
   line-height: inherit;
-  background-color: #ffffff;
+  background-color: #f8fafc;
   color: #0f172a;
 }
 
@@ -210,6 +210,10 @@ img, svg, video, canvas, audio, iframe, embed, object {
   height: 3rem;
 }
 
+.h-14 {
+  height: 3.5rem;
+}
+
 .h-full {
   height: 100%;
 }
@@ -230,12 +234,20 @@ img, svg, video, canvas, audio, iframe, embed, object {
   width: 3rem;
 }
 
+.w-14 {
+  width: 3.5rem;
+}
+
 .w-full {
   width: 100%;
 }
 
 .max-w-md {
   max-width: 28rem;
+}
+
+.max-w-lg {
+  max-width: 32rem;
 }
 
 .flex-1 {
@@ -601,6 +613,10 @@ img, svg, video, canvas, audio, iframe, embed, object {
   color: #1f2937;
 }
 
+.text-white {
+  color: #ffffff;
+}
+
 .underline {
   text-decoration: underline;
 }
@@ -615,6 +631,14 @@ img, svg, video, canvas, audio, iframe, embed, object {
 
 .shadow-sm {
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.shadow-md {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 .outline-none {
@@ -634,6 +658,12 @@ img, svg, video, canvas, audio, iframe, embed, object {
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, -webkit-backdrop-filter;
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
   transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter, -webkit-backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.transition-all {
+  transition-property: all;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
@@ -733,4 +763,53 @@ img, svg, video, canvas, audio, iframe, embed, object {
     padding-left: 1rem;
     padding-right: 1rem;
   }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+@keyframes slide-in-from-right {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-from-right {
+  animation: slide-in-from-right 0.3s ease-out forwards;
 }

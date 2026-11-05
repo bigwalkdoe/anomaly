@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Play, Plus } from "lucide-react";
+import { Plus, Play } from "@/components/ui/icons"
 
 export default function PlaybooksPage() {
   const [name, setName] = useState("");
@@ -14,7 +14,6 @@ export default function PlaybooksPage() {
 
   const createPlaybook = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Implementation would call API
     console.log("Creating playbook:", name, description);
   };
 
@@ -36,9 +35,9 @@ export default function PlaybooksPage() {
           </Button>
         </div>
 
-        <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden">
-          <div className="rounded-md border border-input p-12 text-center">
-            <Play className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden p-12 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <Play className="h-12 w-12 text-muted-foreground" />
             <h3 className="text-lg font-semibold">No playbooks</h3>
             <p className="text-muted-foreground">Create your first playbook to automate tool execution.</p>
             <Button asChild className="mt-4">

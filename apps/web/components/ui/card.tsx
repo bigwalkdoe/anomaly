@@ -3,17 +3,22 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: "default" | "bordered" | "ghost";
+}
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, ...props }, ref) => {
+  ({ className, variant = "default", ...props }, ref) => {
+    const variants = {
+      default: "border border-input bg-background text-foreground shadow-sm",
+      bordered: "border border-input bg-background text-foreground",
+      ghost: "hover:bg-accent hover:text-accent-foreground",
+    };
+
     return (
       <div
         ref={ref}
-        className={cn(
-          "rounded-xl border border-input bg-background text-foreground shadow",
-          className
-        )}
+        className={cn("rounded-xl", variants[variant], className)}
         {...props}
       />
     );
@@ -39,10 +44,7 @@ const CardTitle = React.forwardRef<HTMLParagraphElement, CardProps>(
     return (
       <h3
         ref={ref}
-        className={cn(
-          "text-2xl font-semibold leading-none tracking-tight",
-          className
-        )}
+        className={cn("text-2xl font-semibold leading-none tracking-tight", className)}
         {...props}
       />
     );

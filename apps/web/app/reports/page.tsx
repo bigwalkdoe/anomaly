@@ -2,17 +2,20 @@
 
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Download } from "@/components/ui/icons";
 
 export default function ReportsPage() {
   const [engagementId, setEngagementId] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const generateReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!engagementId) return;
+    setLoading(true);
     try {
       const res = await fetch(`http://localhost:8000/api/reports/engagements/${engagementId}/generate?format=markdown`);
       const data = await res.json();
@@ -25,6 +28,8 @@ export default function ReportsPage() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to generate report:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -48,6 +53,7 @@ export default function ReportsPage() {
               <input
                 type="text"
                 required
+                id="engagement-id"
                 className="rounded-md border border-input bg-input px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                 value={engagementId}
                 onChange={(e) => setEngagementId(e.target.value)}
@@ -56,14 +62,17 @@ export default function ReportsPage() {
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Format</label>
-              <select className="rounded-md border border-input bg-input px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+              <select
+                className="rounded-md border border-input bg-input px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+              >
                 <option value="markdown">Markdown</option>
                 <option value="html">HTML</option>
                 <option value="pdf">PDF</option>
               </select>
             </div>
-            <Button type="submit" className="inline-flex items-center gap-2">
-              <Download className="h-4 w-4" /> Generate Report
+            <Button type="submit" disabled={loading} className="inline-flex items-center gap-2">
+              <Download className="h-4 w-4 mr-2" />
+              {loading ? "Generating..." : "Generate Report"}
             </Button>
           </form>
         </div>
@@ -81,3 +90,5 @@ export default function ReportsPage() {
     </div>
   );
 }
+
+import { Label } from "@/components/ui/label";
