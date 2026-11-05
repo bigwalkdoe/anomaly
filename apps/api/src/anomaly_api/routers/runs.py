@@ -21,6 +21,7 @@ router = APIRouter(tags=["runs"])
 class RunCreate(BaseModel):
     tool: str = Field(default="stub")
     targets: list[str] = Field(default_factory=list)
+    params: dict = Field(default_factory=dict)
 
 
 class RunResponse(BaseModel):
@@ -68,6 +69,7 @@ async def create_run(
         tool=payload.tool,
         status=RunStatus.queued,
         scope_warning=result.has_warning,
+        params={"targets": targets, **(payload.params or {})},
     )
     db.add(run)
     await db.flush()
