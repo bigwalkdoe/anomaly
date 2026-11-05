@@ -93,7 +93,19 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
             severity = FindingSeverity(sev)
         except ValueError:
             severity = FindingSeverity.INFO
-        fingerprint = f.get("fingerprint") or f"{run.engagement_id}:{run.tool}:{f.get('title', '')}"
+        fingerprint = str(
+            f.get("fingerprint") or f"{run.engagement_id}:{run.tool}:{f.get('title', '')}"
+        )
+        existing = await db.scalar(
+            select(Finding).where(
+                Finding.engagement_id == run.engagement_id,
+                Finding.fingerprint == fingerprint,
+            )
+        )
+        if existing is not None:
+            # Attach: keep existing finding; optionally refresh metadata.
+            existing.updated_at = datetime.now(UTC)
+            continue
         db.add(
             Finding(
                 engagement_id=run.engagement_id,
@@ -103,7 +115,7 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
                 description=f.get("description"),
                 remediation=f.get("remediation"),
                 reporter_id=run.user_id,
-                fingerprint=str(fingerprint),
+                fingerprint=fingerprint,
             )
         )
 

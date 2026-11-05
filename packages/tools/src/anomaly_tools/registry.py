@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from anomaly_tools.ffuf import parse_ffuf_json, run_ffuf
 from anomaly_tools.generic import parse_passthrough, run_not_implemented
 from anomaly_tools.nmap import parse_nmap_xml, run_nmap
 from anomaly_tools.nuclei import parse_nuclei_output, run_nuclei
@@ -49,7 +50,12 @@ TOOL_DEFS: dict[str, ToolDefinition] = {
         run_direct=run_nuclei,
     ),
     "ffuf": ToolDefinition(
-        "ffuf", "anomaly-tools-ffuf:dev", parse_passthrough, run_not_implemented
+        name="ffuf",
+        image="anomaly-tools-ffuf:dev",
+        parse_output=lambda stdout, stderr, exit_code, targets, params: parse_ffuf_json(
+            stdout or "", targets, params
+        ),
+        run_direct=run_ffuf,
     ),
     "sqlmap": ToolDefinition(
         "sqlmap", "anomaly-tools-sqlmap:dev", parse_passthrough, run_not_implemented
