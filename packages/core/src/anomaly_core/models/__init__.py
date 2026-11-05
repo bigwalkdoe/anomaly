@@ -2,6 +2,7 @@ from anomaly_core.models.approval import Approval, Playbook, PlaybookStep
 from anomaly_core.models.audit import AuditLog
 from anomaly_core.models.engagement import (
     Engagement,
+    EngagementMember,
     EngagementMode,
     EngagementStatus,
     Scope,
@@ -16,6 +17,7 @@ __all__ = [
     "Approval",
     "AuditLog",
     "Engagement",
+    "EngagementMember",
     "EngagementMode",
     "EngagementStatus",
     "Evidence",

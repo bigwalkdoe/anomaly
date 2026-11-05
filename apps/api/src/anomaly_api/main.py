@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from anomaly_api.routers import auth
+from anomaly_api.routers import auth, engagements, findings, runs
 
 app = FastAPI(title="Anomaly API", version="0.1.0")
 
@@ -16,3 +16,7 @@ async def version() -> dict[str, str]:
 
 
 app.include_router(auth.router)
+app.include_router(engagements.router)
+app.include_router(findings.router)
+app.include_router(runs.router)
+
