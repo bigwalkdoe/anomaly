@@ -1,0 +1,18 @@
+from fastapi import FastAPI
+
+from anomaly_api.routers import auth
+
+app = FastAPI(title="Anomaly API", version="0.1.0")
+
+
+@app.get("/api/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/version")
+async def version() -> dict[str, str]:
+    return {"version": "0.1.0"}
+
+
+app.include_router(auth.router)
