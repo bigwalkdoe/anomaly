@@ -1,7 +1,25 @@
-import { Navbar } from "@/components/Navbar";
-import { getEngagements, Engagement } from "@/lib/api";
-import { Plus, Trash2 } from "lucide.react";
+"use client";
+
+import { useEffect, useState } from "react";
+import { Sidebar } from "@/components/layout/layout";
+import { TopNav } from "@/components/layout/layout";
+import { useAuth } from "@/components/AuthContext";
+import { apiJson } from "@/lib/api";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Plus, Target, Search, Filter, Trash2, AlertCircle } from "lucide-react";
 import Link from "next/link";
+
+interface Engagement {
+  id: string;
+  name: string;
+  mode: string;
+  status: string;
+  owner_id: string;
+}
 
 const MODE_COLORS: Record<string, string> = {
   own_infra: "bg-blue-100 text-blue-800",
@@ -16,87 +34,126 @@ const STATUS_COLORS: Record<string, string> = {
   closed: "bg-gray-100 text-gray-800",
 };
 
-export default async function EngagementsPage() {
-  const engagements = await getEngagements();
+export default function EngagementsPage() {
+  const { token } = useAuth();
+  const [engagements, setEngagements] = useState<Engagement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    loadEngagements();
+  }, []);
+
+  const loadEngagements = async () => {
+    try {
+      const data = await apiJson<Engagement[]>("/api/engagements");
+      setEngagements(data);
+    } catch (err) {
+      console.error("Failed to fetch engagements:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredEngagements = engagements.filter((e) =>
+    e.name.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="container mx-auto px-4 py-8">
+      <TopNav user={{ name: "Admin" }} />
+      <Sidebar />
+      <main className="flex-1 ml-64 p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-bold">Engagements</h1>
-            <p className="text-muted-foreground">Manage penetration testing engagements</p>
+            <p className="text-muted-foreground">
+              Manage penetration testing engagements
+            </p>
           </div>
-          <a
-            href="/engagements/new"
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" /> New Engagement
-          </a>
+          <Button asChild>
+            <a href="/engagements/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Engagement
+            </a>
+          </Button>
         </div>
 
-        {engagements.length === 0 ? (
-          <div className="rounded-lg border border-border bg-white p-12 text-center">
-            <div className="h-12 w-12 text-muted-foreground mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold">No engagements</h3>
-            <p className="text-muted-foreground">Create your first engagement to get started.</p>
-            <a
-              href="/engagements/new"
-              className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="h-4 w-4" /> Create Engagement
-            </a>
+        <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-input flex items-center gap-4">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search engagements..."
+              className="flex-1 border-none bg-transparent focus:ring-0 text-sm text-foreground"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Filter className="h-4 w-4 text-muted-foreground" />
           </div>
-        ) : (
-          <div className="rounded-lg border border-border bg-white shadow-sm overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-4 py-3 text-sm font-semibold text-muted-foreground">Name</th>
-                  <th className="px-4 py-3 text-sm font-semibold text-muted-foreground">Mode</th>
-                  <th className="px-4 py-3 text-sm font-semibold text-muted-foreground">Status</th>
-                  <th className="px-4 py-3 text-sm font-semibold text-muted-foreground text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {engagements.map((eng) => (
-                  <tr key={eng.id} className="border-b border-border hover:bg-accent">
-                    <td className="px-4 py-3">
-                      <Link href={`/engagements/${eng.id}`} className="font-medium hover:text-primary">
+
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+            </div>
+          ) : filteredEngagements.length === 0 ? (
+            <div className="rounded-lg border border-input bg-card p-12 text-center">
+              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold">No engagements</h3>
+              <p className="text-muted-foreground">Create your first engagement to get started.</p>
+              <Button asChild className="mt-4">
+                <a href="/engagements/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Engagement
+                </a>
+              </Button>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-1/3">Name</TableHead>
+                  <TableHead className="w-1/6">Mode</TableHead>
+                  <TableHead className="w-1/6">Status</TableHead>
+                  <TableHead className="w-1/6 text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredEngagements.map((eng) => (
+                  <TableRow key={eng.id} className="hover:bg-accent/50">
+                    <TableCell className="font-medium">
+                      <Link href={`/engagements/${eng.id}`} className="hover:text-primary">
                         {eng.name}
                       </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${MODE_COLORS[eng.mode] || "bg-gray-100 text-gray-800"}`}>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={MODE_COLORS[eng.mode] || "bg-gray-100 text-gray-800"}>
                         {eng.mode.replace("_", " ").toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${STATUS_COLORS[eng.status] || "bg-gray-100 text-gray-800"}`}>
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={STATUS_COLORS[eng.status] || "bg-gray-100 text-gray-800"}>
                         {eng.status.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <a
-                        href={`/engagements/${eng.id}`}
-                        className="rounded-md p-2 text-muted-foreground hover:text-primary transition-colors"
-                        title="View details"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </a>
-                    </td>
-                  </tr>
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link href={`/engagements/${eng.id}`} className="p-2 text-muted-foreground hover:text-primary">
+                          <span className="sr-only">View</span>
+                        </Link>
+                        <button className="p-2 text-destructive hover:bg-destructive/50 hover:text-destructive transition-colors" title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </TableBody>
+            </Table>
+          )}
+        </div>
       </main>
     </div>
   );
 }
+
