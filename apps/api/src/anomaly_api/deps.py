@@ -1,17 +1,16 @@
 from collections.abc import AsyncGenerator, Callable
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
-
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from anomaly_core.auth import decode_token
 from anomaly_core.db import SessionLocal
 from anomaly_core.models.engagement import Engagement
 from anomaly_core.models.user import User
-from anomaly_core.rbac import engagement_accessible, is_admin
+from anomaly_core.rbac import engagement_accessible
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -40,7 +39,7 @@ async def get_current_user(
     return user
 
 
-def require_role(*roles: str) -> Callable:
+def require_role(*roles: str) -> Callable[..., Any]:
     async def dependency(
         current_user: Annotated[User, Depends(get_current_user)],
     ) -> User:
@@ -52,7 +51,9 @@ def require_role(*roles: str) -> Callable:
     return dependency
 
 
-def require_engagement_access(min_role: str = "client_viewer", hide: bool = False) -> Callable:
+def require_engagement_access(
+    min_role: str = "client_viewer", hide: bool = False
+) -> Callable[..., Any]:
     async def dependency(
         engagement_id: UUID,
         current_user: Annotated[User, Depends(get_current_user)],
@@ -68,4 +69,3 @@ def require_engagement_access(min_role: str = "client_viewer", hide: bool = Fals
         return eng
 
     return dependency
-

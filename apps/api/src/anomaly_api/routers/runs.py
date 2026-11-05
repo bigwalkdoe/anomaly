@@ -1,12 +1,6 @@
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from anomaly_api.deps import get_current_user, get_db, require_engagement_access
 from anomaly_core.audit import AuditService
 from anomaly_core.models.engagement import Engagement, EngagementMember, Scope, ScopeEntry
 from anomaly_core.models.finding import Evidence
@@ -14,6 +8,12 @@ from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.models.user import User
 from anomaly_core.rbac import can_access_engagement, is_admin
 from anomaly_core.scope import check_scope
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from anomaly_api.deps import get_current_user, get_db, require_engagement_access
 
 engagement_runs_router = APIRouter(prefix="/api/engagements", tags=["runs"])
 runs_router = APIRouter(prefix="/api/runs", tags=["runs"])
@@ -25,7 +25,7 @@ router = engagement_runs_router
 class RunCreate(BaseModel):
     tool: str
     targets: list[str] = []
-    params: dict = {}
+    params: dict[str, Any] = {}
 
 
 @engagement_runs_router.post("/{engagement_id}/runs", status_code=202)
@@ -35,7 +35,7 @@ async def create_run(
     eng: Annotated[Engagement, Depends(require_engagement_access("client_viewer"))],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     # Client viewers cannot create runs.
     if not await is_admin(current_user, db):
         member = await db.scalar(
@@ -88,7 +88,7 @@ async def get_run(
     run_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     run = await db.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -107,7 +107,7 @@ async def get_run_logs(
     run_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     run = await db.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -116,5 +116,7 @@ async def get_run_logs(
     rows = await db.scalars(
         select(Evidence).where(Evidence.run_id == run.id, Evidence.type == "tool_output")
     )
-    logs = [{"stdout": r.meta.get("stdout"), "stderr": r.meta.get("stderr")} for r in rows if r.meta]
+    logs = [
+        {"stdout": r.meta.get("stdout"), "stderr": r.meta.get("stderr")} for r in rows if r.meta
+    ]
     return {"run_id": str(run.id), "logs": logs}

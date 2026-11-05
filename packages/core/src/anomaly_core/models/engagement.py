@@ -9,13 +9,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from anomaly_core.db import Base
 
 
-class EngagementMode(str, enum.Enum):
+class EngagementMode(enum.StrEnum):
     OWN_INFRA = "own_infra"
     BUG_BOUNTY = "bug_bounty"
     CLIENT = "client"
 
 
-class EngagementStatus(str, enum.Enum):
+class EngagementStatus(enum.StrEnum):
     DRAFT = "draft"
     ACTIVE = "active"
     PAUSED = "paused"

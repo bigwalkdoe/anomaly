@@ -1,11 +1,10 @@
 import pytest
-from sqlalchemy import select
-
 from anomaly_core.models.audit import AuditLog
 from anomaly_core.models.engagement import Engagement, EngagementMode, EngagementStatus, Target
 from anomaly_core.models.finding import Finding, FindingSeverity, FindingStatus
 from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.models.user import User
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio

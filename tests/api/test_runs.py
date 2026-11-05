@@ -1,19 +1,23 @@
 import uuid
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select
-
 from anomaly_api.deps import get_db
 from anomaly_api.main import app
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models.audit import AuditLog
-from anomaly_core.models.engagement import Engagement, EngagementMember, EngagementMode, Scope, ScopeEntry
+from anomaly_core.models.engagement import (
+    Engagement,
+    EngagementMode,
+    Scope,
+    ScopeEntry,
+)
 from anomaly_core.models.finding import Finding
 from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.models.user import Role, RoleName, User, UserRole
 from anomaly_core.runner import FakeRunner, RunResult
 from anomaly_worker.executor import execute_run_inline
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 
 
 async def _admin_eng(db_session, *, in_scope=None):
@@ -22,7 +26,9 @@ async def _admin_eng(db_session, *, in_scope=None):
         role = Role(name=RoleName.ADMIN)
         db_session.add(role)
         await db_session.flush()
-    user = User(email=f"run-{uuid.uuid4().hex[:6]}@x.com", name="A", password_hash=hash_password("pw"))
+    user = User(
+        email=f"run-{uuid.uuid4().hex[:6]}@x.com", name="A", password_hash=hash_password("pw")
+    )
     db_session.add(user)
     await db_session.flush()
     db_session.add(UserRole(user_id=user.id, role_id=role.id))
@@ -41,6 +47,7 @@ async def _admin_eng(db_session, *, in_scope=None):
 def _override(db_session):
     async def override_get_db():
         yield db_session
+
     return override_get_db
 
 
@@ -95,7 +102,9 @@ async def test_vertical_slice_stub_tool(db_session):
     user, eng = await _admin_eng(db_session, in_scope=["example.com"])
     from anomaly_core.audit import AuditService
 
-    await AuditService.log(db_session, user.id, "engagement.create", "engagement", eng.id, eng.id, {})
+    await AuditService.log(
+        db_session, user.id, "engagement.create", "engagement", eng.id, eng.id, {}
+    )
     await AuditService.log(db_session, user.id, "run.enqueue", "run", None, eng.id, {})
     await AuditService.log(db_session, user.id, "scope.check", "run", None, eng.id, {})
     run = Run(

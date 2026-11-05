@@ -1,8 +1,7 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from anomaly_api.deps import get_db
 from anomaly_api.main import app
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: uv pip install --system ruff
+      - name: Ruff check
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv pip install --system -e packages/core -e packages/tools -e apps/api -e apps/worker mypy pytest types-requests
+      - name: Mypy
+        run: mypy packages apps
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: anomaly
+          POSTGRES_PASSWORD: anomaly
+          POSTGRES_DB: anomaly
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready -U anomaly -d anomaly
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://anomaly:anomaly@localhost:5432/anomaly
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ***REMOVED***
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          uv pip install --system -e packages/core -e packages/tools -e apps/api -e apps/worker pytest pytest-asyncio
+      - name: Migrate
+        run: alembic -c packages/core/alembic.ini upgrade head
+      - name: Test
+        run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runner image
+        run: docker build -f infra/runner/Dockerfile -t anomaly-runner:ci infra/runner

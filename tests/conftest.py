@@ -1,10 +1,9 @@
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
+from anomaly_core.config import get_settings
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-from anomaly_core.config import get_settings
 
 
 @pytest_asyncio.fixture
@@ -20,9 +19,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         )
         tables = [row[0] for row in result.fetchall()]
         if tables:
-            await conn.execute(
-                text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE")
-            )
+            await conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
     session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     async with session_factory() as session:
         try:

@@ -1,11 +1,5 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from anomaly_api.deps import get_current_user, get_db
 from anomaly_core.auth import (
     create_access_token,
     create_refresh_token,
@@ -15,6 +9,12 @@ from anomaly_core.auth import (
     verify_password,
 )
 from anomaly_core.models.user import User
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from anomaly_api.deps import get_current_user, get_db
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -82,7 +82,9 @@ async def login(body: LoginRequest, db: Annotated[AsyncSession, Depends(get_db)]
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest, db: Annotated[AsyncSession, Depends(get_db)]) -> TokenResponse:
+async def refresh(
+    body: RefreshRequest, db: Annotated[AsyncSession, Depends(get_db)]
+) -> TokenResponse:
     access, new_refresh = await rotate_refresh_token(body.refresh_token, db)
     await db.commit()
     return TokenResponse(access_token=access, refresh_token=new_refresh)

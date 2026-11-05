@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -24,7 +25,7 @@ class AuditLog(Base):
         nullable=True,
         index=True,
     )
-    meta: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    meta: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
