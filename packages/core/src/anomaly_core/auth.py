@@ -31,11 +31,11 @@ class TokenPayload:
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return str(pwd_context.hash(plain))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bool(pwd_context.verify(plain, hashed))
 
 
 def _now() -> datetime:
@@ -121,9 +121,7 @@ async def rotate_refresh_token(token: str, db: AsyncSession) -> tuple[str, str]:
     if result.revoked:
         # Theft detection: revoke entire family.
         await db.execute(
-            update(RefreshToken)
-            .where(RefreshToken.family_id == family_id)
-            .values(revoked=True)
+            update(RefreshToken).where(RefreshToken.family_id == family_id).values(revoked=True)
         )
         await db.flush()
         raise HTTPException(status_code=401, detail="Refresh token reuse detected")
@@ -131,7 +129,7 @@ async def rotate_refresh_token(token: str, db: AsyncSession) -> tuple[str, str]:
     user = await db.scalar(select(User).where(User.id == result.user_id))
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User inactive")
-    roles = []  # roles resolved in deps/router as needed
+    roles: list[str] = []  # roles resolved in deps/router as needed
     access = create_access_token(user.id, roles)
     refresh = await create_refresh_token(user.id, db, family_id=family_id)
     return access, refresh

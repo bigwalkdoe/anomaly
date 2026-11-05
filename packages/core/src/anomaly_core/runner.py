@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -33,7 +34,9 @@ class RunnerBackend(Protocol):
 
 class FakeRunner:
     def __init__(self, result: RunResult | None = None) -> None:
-        self.result = result or RunResult(exit_code=0, stdout="", stderr="", artifacts=[], duration_s=0.0)
+        self.result = result or RunResult(
+            exit_code=0, stdout="", stderr="", artifacts=[], duration_s=0.0
+        )
         self.specs: list[RunSpec] = []
 
     async def run(self, spec: RunSpec) -> RunResult:
@@ -59,10 +62,14 @@ class DockerRunner:
             wait = container.wait(timeout=spec.timeout_s)
             status = wait.get("StatusCode", 1) if isinstance(wait, dict) else 1
             logs = container.logs(stdout=True, stderr=True)
-            stdout = logs.decode("utf-8", errors="replace") if isinstance(logs, (bytes, bytearray)) else str(logs)
-            return RunResult(exit_code=status, stdout=stdout, stderr="", artifacts=[], duration_s=0.0)
+            stdout = (
+                logs.decode("utf-8", errors="replace")
+                if isinstance(logs, (bytes, bytearray))
+                else str(logs)
+            )
+            return RunResult(
+                exit_code=status, stdout=stdout, stderr="", artifacts=[], duration_s=0.0
+            )
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 container.remove(force=True)
-            except Exception:
-                pass

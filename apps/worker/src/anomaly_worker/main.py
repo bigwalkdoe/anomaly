@@ -1,7 +1,6 @@
-from arq import cron
+from anomaly_core.config import get_settings
 from arq.connections import RedisSettings
 
-from anomaly_core.config import get_settings
 from anomaly_worker.tasks import execute_run
 
 

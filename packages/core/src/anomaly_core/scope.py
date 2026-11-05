@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -33,12 +34,10 @@ def _matches(entry_value: str, target: str) -> bool:
     except ValueError:
         pass
     # Suffix match for subdomains if entry is a domain.
-    if tv == ev or tv.endswith("." + ev):
-        return True
-    return False
+    return bool(tv == ev or tv.endswith("." + ev))
 
 
-def check_scope(entries, requested_targets: list[str]) -> ScopeCheckResult:
+def check_scope(entries: list[Any], requested_targets: list[str]) -> ScopeCheckResult:
     in_entries = [e for e in entries if getattr(e, "kind", None) == "in"]
     out_entries = [e for e in entries if getattr(e, "kind", None) == "out"]
     result = ScopeCheckResult()

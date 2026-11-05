@@ -1,14 +1,16 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select
-
 from anomaly_api.deps import get_db
 from anomaly_api.main import app
+from anomaly_core.audit import AuditService
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models.audit import AuditLog
-from anomaly_core.models.engagement import Engagement, EngagementMember, EngagementMode, Scope, ScopeEntry
+from anomaly_core.models.engagement import (
+    Engagement,
+    EngagementMode,
+)
 from anomaly_core.models.user import Role, RoleName, User, UserRole
-from anomaly_core.audit import AuditService
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, select
 
 
 async def _admin(db_session):

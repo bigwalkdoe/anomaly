@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from anomaly_core.models.engagement import Engagement, EngagementMember
+from anomaly_core.models.engagement import EngagementMember
 from anomaly_core.models.user import Role, RoleName, User, UserRole
 
 ROLE_RANK = {"admin": 3, "pentester": 2, "client_viewer": 1}
@@ -49,5 +49,7 @@ async def engagement_accessible(
     return ROLE_RANK.get(membership.role, 0) >= ROLE_RANK.get(min_role, 0)
 
 
-async def can_access_engagement(user: User, engagement_id: uuid.UUID | str, db: AsyncSession) -> bool:
+async def can_access_engagement(
+    user: User, engagement_id: uuid.UUID | str, db: AsyncSession
+) -> bool:
     return await engagement_accessible(user, engagement_id, "client_viewer", db)

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -40,7 +41,7 @@ class Playbook(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
-    steps: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    steps: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -54,11 +55,14 @@ class PlaybookStep(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     playbook_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("playbooks.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=True),
+        ForeignKey("playbooks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     position: Mapped[int] = mapped_column(nullable=False, default=0)
     tool: Mapped[str] = mapped_column(String(200), nullable=False)
-    params: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     condition: Mapped[str | None] = mapped_column(Text, nullable=True)
     on_failure: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

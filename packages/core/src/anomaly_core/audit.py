@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +18,7 @@ class AuditService:
         resource_type: str,
         resource_id: uuid.UUID | str | None = None,
         engagement_id: uuid.UUID | str | None = None,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
         commit: bool = False,
     ) -> AuditLog:
         row = AuditLog(

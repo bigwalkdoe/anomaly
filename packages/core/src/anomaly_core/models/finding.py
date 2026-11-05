@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from anomaly_core.db import Base
 
 
-class FindingSeverity(str, enum.Enum):
+class FindingSeverity(enum.StrEnum):
     INFO = "info"
     LOW = "low"
     MEDIUM = "medium"
@@ -17,7 +18,7 @@ class FindingSeverity(str, enum.Enum):
     CRITICAL = "critical"
 
 
-class FindingStatus(str, enum.Enum):
+class FindingStatus(enum.StrEnum):
     NEW = "new"
     TRIAGED = "triaged"
     CONFIRMED = "confirmed"
@@ -43,7 +44,10 @@ class Finding(Base):
         Enum(FindingSeverity, name="finding_severity"), nullable=False
     )
     status: Mapped[FindingStatus] = mapped_column(
-        Enum(FindingStatus, name="finding_status"), nullable=False, default=FindingStatus.NEW, index=True
+        Enum(FindingStatus, name="finding_status"),
+        nullable=False,
+        default=FindingStatus.NEW,
+        index=True,
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     remediation: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -69,14 +73,17 @@ class Evidence(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     finding_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("findings.id", ondelete="SET NULL"), nullable=True, index=True
+        UUID(as_uuid=True),
+        ForeignKey("findings.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True
     )
     type: Mapped[str] = mapped_column(String(100), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(1000), nullable=False)
-    meta: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    meta: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

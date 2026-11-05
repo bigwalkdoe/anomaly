@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import JSON, UUID
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from anomaly_core.db import Base
 
 
-class RunStatus(str, enum.Enum):
+class RunStatus(enum.StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
@@ -31,8 +32,8 @@ class Run(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     tool: Mapped[str] = mapped_column(String(200), nullable=False)
-    target_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    params: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    target_ids: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[RunStatus] = mapped_column(
         Enum(RunStatus, name="run_status"), nullable=False, default=RunStatus.QUEUED, index=True
     )

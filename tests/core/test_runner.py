@@ -1,13 +1,14 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from anomaly_core.runner import DockerRunner, FakeRunner, RunResult, RunSpec
 
 
 @pytest.mark.asyncio
 async def test_fake_runner_records_and_returns():
-    runner = FakeRunner(result=RunResult(exit_code=0, stdout="ok", stderr="", artifacts=[], duration_s=1.0))
+    runner = FakeRunner(
+        result=RunResult(exit_code=0, stdout="ok", stderr="", artifacts=[], duration_s=1.0)
+    )
     spec = RunSpec(
         tool="stub",
         image="img",

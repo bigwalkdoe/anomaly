@@ -1,12 +1,11 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
-
 from anomaly_api.deps import get_db
 from anomaly_api.main import app
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models.engagement import Engagement
 from anomaly_core.models.user import Role, RoleName, User, UserRole
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 
 async def _admin(db_session):
@@ -15,7 +14,9 @@ async def _admin(db_session):
         role = Role(name=RoleName.ADMIN)
         db_session.add(role)
         await db_session.flush()
-    user = User(email=f"admin-find-{id(db_session)}@x.com", name="Admin", password_hash=hash_password("pw"))
+    user = User(
+        email=f"admin-find-{id(db_session)}@x.com", name="Admin", password_hash=hash_password("pw")
+    )
     db_session.add(user)
     await db_session.flush()
     db_session.add(UserRole(user_id=user.id, role_id=role.id))
@@ -23,6 +24,7 @@ async def _admin(db_session):
     eng = Engagement(name="FindEng", mode="client", owner_id=user.id)
     # mode is enum; easier to use model default via proper enum
     from anomaly_core.models.engagement import EngagementMode
+
     eng.mode = EngagementMode.CLIENT
     db_session.add(eng)
     await db_session.flush()

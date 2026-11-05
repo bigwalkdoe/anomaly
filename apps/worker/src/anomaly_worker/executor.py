@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from anomaly_core.audit import AuditService
 from anomaly_core.models.engagement import Scope, ScopeEntry
@@ -13,9 +11,11 @@ from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.runner import FakeRunner, RunSpec
 from anomaly_core.scope import check_scope
 from anomaly_tools.stub import TOOL_REGISTRY
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
-async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner=None) -> Run:
+async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | None = None) -> Run:
     run = await db.get(Run, run_id)
     if run is None:
         raise ValueError("run not found")
@@ -83,14 +83,20 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner=None) -
                     status=FindingStatus.NEW,
                     description=f.get("description"),
                     reporter_id=run.user_id,
-                    fingerprint=f"{run.engagement_id}:{run.tool}:{f.get('title','')}",
+                    fingerprint=f"{run.engagement_id}:{run.tool}:{f.get('title', '')}",
                 )
             )
 
     run.status = RunStatus.SUCCEEDED if result.exit_code == 0 else RunStatus.FAILED
     run.finished_at = datetime.now(UTC)
     await AuditService.log(
-        db, run.user_id, "run.complete", "run", run.id, run.engagement_id, {"status": run.status.value}
+        db,
+        run.user_id,
+        "run.complete",
+        "run",
+        run.id,
+        run.engagement_id,
+        {"status": run.status.value},
     )
     await db.commit()
     return run

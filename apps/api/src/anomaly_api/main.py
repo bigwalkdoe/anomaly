@@ -22,5 +22,3 @@ app.include_router(findings.router)
 app.include_router(engagement_runs_router)
 app.include_router(runs_router)
 app.include_router(audit.router)
-
-

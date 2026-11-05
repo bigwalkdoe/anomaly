@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from anomaly_core.db import Base
 
 
-class RoleName(str, enum.Enum):
+class RoleName(enum.StrEnum):
     ADMIN = "admin"
     PENTESTER = "pentester"
     CLIENT_VIEWER = "client_viewer"
@@ -52,7 +52,9 @@ class Role(Base):
     __tablename__ = "roles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[RoleName] = mapped_column(Enum(RoleName, name="role_name"), unique=True, nullable=False)
+    name: Mapped[RoleName] = mapped_column(
+        Enum(RoleName, name="role_name"), unique=True, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

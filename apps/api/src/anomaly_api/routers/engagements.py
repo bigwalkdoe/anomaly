@@ -1,6 +1,19 @@
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
+from anomaly_core.audit import AuditService
+from anomaly_core.models.engagement import (
+    Engagement,
+    EngagementMember,
+    EngagementMode,
+    EngagementStatus,
+    Scope,
+    ScopeEntry,
+    Target,
+)
+from anomaly_core.models.finding import Finding, FindingSeverity, FindingStatus
+from anomaly_core.models.user import User
+from anomaly_core.rbac import is_admin
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,19 +28,6 @@ from anomaly_api.schemas.engagement import (
     TargetCreate,
 )
 from anomaly_api.schemas.finding import FindingCreate, FindingOut
-from anomaly_core.models.finding import Finding, FindingSeverity, FindingStatus
-from anomaly_core.audit import AuditService
-from anomaly_core.models.engagement import (
-    Engagement,
-    EngagementMember,
-    EngagementMode,
-    EngagementStatus,
-    Scope,
-    ScopeEntry,
-    Target,
-)
-from anomaly_core.models.user import User
-from anomaly_core.rbac import is_admin
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -111,7 +111,9 @@ async def update_engagement(
         eng.client_name = body.client_name
     if body.rules_of_engagement is not None:
         eng.rules_of_engagement = body.rules_of_engagement
-    await AuditService.log(db, current_user.id, "engagement.update", "engagement", eng.id, eng.id, {})
+    await AuditService.log(
+        db, current_user.id, "engagement.update", "engagement", eng.id, eng.id, {}
+    )
     await db.commit()
     await db.refresh(eng)
     return _eng_out(eng)
@@ -123,7 +125,9 @@ async def delete_engagement(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Response:
-    await AuditService.log(db, current_user.id, "engagement.delete", "engagement", eng.id, eng.id, {})
+    await AuditService.log(
+        db, current_user.id, "engagement.delete", "engagement", eng.id, eng.id, {}
+    )
     await db.delete(eng)
     await db.commit()
     return Response(status_code=204)
@@ -138,7 +142,8 @@ async def get_scope(
     if scope is None:
         return ScopeOut()
     entries = await db.scalars(select(ScopeEntry).where(ScopeEntry.scope_id == scope.id))
-    ins, outs = [], []
+    ins: list[str] = []
+    outs: list[str] = []
     for e in entries:
         (ins if e.kind == "in" else outs).append(e.target_value)
     return ScopeOut(notes=scope.notes, in_scope=ins, out_of_scope=outs)
@@ -177,7 +182,7 @@ async def add_target(
     eng: Annotated[Engagement, Depends(require_engagement_access("pentester"))],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     target = Target(
         engagement_id=eng.id,
         value=body.value,
@@ -196,7 +201,7 @@ async def add_target(
 async def list_engagement_findings(
     eng: Annotated[Engagement, Depends(require_engagement_access("client_viewer"))],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = await db.scalars(select(Finding).where(Finding.engagement_id == eng.id))
     return [
         {
