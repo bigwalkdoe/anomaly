@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from uuid import UUID
 
 from anomaly_core.db import SessionLocal
-from anomaly_core.models import Engagement, Run, User
-from anomaly_core.rbac import engagement_accessible
-from anomaly_core.auth import decode_token
+from anomaly_core.models import Run, User
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from anomaly_api.deps import CurrentUser, DbSession
 
 router = APIRouter(tags=["websocket"])
 
@@ -92,11 +92,11 @@ async def run_websocket(
 async def run_ws_status(run_id: str, user: CurrentUser, db: DbSession):
     try:
         rid = UUID(str(run_id))
-    except Exception:
-        return {"active": False}
+    except ValueError:
+        return {"active": False, "connection_count": 0}
     run = await db.get(Run, rid)
     if run is None:
-        return {"active": False}
+        return {"active": False, "connection_count": 0}
     active = run_id in manager.active_connections and len(manager.active_connections[run_id]) > 0
     return {"active": active, "connection_count": len(manager.active_connections.get(run_id, []))}
 
@@ -112,7 +112,6 @@ async def notification_websocket(
         return
 
     from anomaly_core.auth import decode_token
-    from anomaly_core.models import User
 
     try:
         payload = decode_token(token)
@@ -135,6 +134,8 @@ async def notification_websocket(
         try:
             while True:
                 data = await websocket.receive_text()
-                await notification_manager.broadcast_to_user(user_id_str, {"type": "ack", "data": data})
+                await notification_manager.broadcast_to_user(
+                    user_id_str, {"type": "ack", "data": data}
+                )
         except WebSocketDisconnect:
             notification_manager.disconnect(websocket, user_id_str)
