@@ -14,6 +14,7 @@ from .engagement import (
     TargetType,
 )
 from .membership import EngagementMember
+from .login_attempt import LoginAttempt
 from .mfa import MFASecret
 from .cron_schedule import CronSchedule
 from .finding import (
@@ -80,5 +81,6 @@ __all__ = [
     "EngagementMember",
     "CronSchedule",
     "MFASecret",
+    "LoginAttempt",
 ]
 from .finding import Tag  # noqa
