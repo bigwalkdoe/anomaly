@@ -26,6 +26,15 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginResponse(BaseModel):
+    """Login response - either tokens (no MFA) or mfa_required (MFA needed)."""
+    mfa_required: bool = False
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str | None = "bearer"
+    user_id: str | None = None
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
