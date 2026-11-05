@@ -3,15 +3,18 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Slot } from "@radix-ui/react-slot";
+import { Loader2 } from "@/components/ui/icons";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
   size?: "default" | "sm" | "lg" | "icon";
   asChild?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant = "default", size = "default", asChild = false, loading = false, disabled = false, children, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
     const variants = {
       default: "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -40,8 +43,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           className
         )}
         ref={ref}
+        disabled={disabled || loading}
         {...props}
-      />
+      >
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {children && <span className="ml-2">{children}</span>}
+          </>
+        ) : (
+          children
+        )}
+      </Comp>
     );
   }
 );

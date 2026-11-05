@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "@/components/ui/icons";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,7 @@ export default function RegisterPage() {
           <Card>
             <CardHeader>
               <CardTitle>Create Account</CardTitle>
-              <CardDescription>Join the Anomaly platform</CardDescription>
+              <CardDescription>Register for Anomaly</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">

@@ -1,6 +1,6 @@
 "use client";
+import { useState, useEffect } from "react";
 
-import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
 import { useAuth } from "@/components/AuthContext";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { Plus, Target, Search, Filter, Trash2, AlertCircle } from "lucide-react";
+import { Plus, Target, Activity, AlertCircle, Trash2, Loader2 } from "@/components/ui/icons";
 import Link from "next/link";
 
 interface Engagement {
@@ -39,10 +39,7 @@ export default function EngagementsPage() {
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    loadEngagements();
-  }, []);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadEngagements = async () => {
     try {
@@ -54,6 +51,10 @@ export default function EngagementsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadEngagements();
+  }, []);
 
   const filteredEngagements = engagements.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase())
@@ -80,33 +81,48 @@ export default function EngagementsPage() {
         </div>
 
         <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-input flex items-center gap-4">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search engagements..."
-              className="flex-1 border-none bg-transparent focus:ring-0 text-sm text-foreground"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <Filter className="h-4 w-4 text-muted-foreground" />
+          <div className="p-4 border-b border-input flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search engagements..."
+                className="flex-1 border-none bg-transparent focus:ring-0 text-sm text-foreground"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={loadEngagements}
+                disabled={refreshing}
+                size="sm"
+              >
+                <Loader2 className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
           </div>
 
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
             </div>
           ) : filteredEngagements.length === 0 ? (
             <div className="rounded-lg border border-input bg-card p-12 text-center">
-              <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold">No engagements</h3>
-              <p className="text-muted-foreground">Create your first engagement to get started.</p>
-              <Button asChild className="mt-4">
-                <a href="/engagements/new">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Engagement
-                </a>
-              </Button>
+              <div className="flex flex-col items-center gap-3 py-8">
+                <AlertCircle className="h-12 w-12 text-muted-foreground" />
+                <h3 className="text-lg font-semibold">No engagements found</h3>
+                <p className="text-sm text-muted-foreground">
+                  {search ? "No engagements match your search." : "No engagements found."}
+                </p>
+                <Button asChild className="mt-4">
+                  <a href="/engagements/new">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Engagement
+                  </a>
+                </Button>
+              </div>
             </div>
           ) : (
             <Table>
@@ -156,4 +172,3 @@ export default function EngagementsPage() {
     </div>
   );
 }
-

@@ -1,9 +1,10 @@
 "use client";
+import { useState, useEffect } from "react";
 
-import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
 import { useAuth } from "@/components/AuthContext";
+import { cn } from '@/lib/utils';
 import { apiJson } from "@/lib/api";
 import {
   Card,
@@ -13,6 +14,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   BarChart3,
   Activity,
@@ -23,9 +26,8 @@ import {
   Play,
   Layout,
   Plus,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+  Shield,
+} from "@/components/ui/icons";
 
 interface StatCard {
   title: string;
@@ -75,8 +77,9 @@ export default function DashboardPage() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Welcome to Anomaly</h1>
+        <div className="flex flex-col items-center gap-4">
+          <Shield className="h-12 w-12 text-primary" />
+          <h2 className="text-2xl font-bold">Welcome to Anomaly</h2>
           <p className="text-muted-foreground">Please sign in to get started</p>
           <Button asChild className="mt-4">
             <a href="/login">Sign in</a>
@@ -125,7 +128,7 @@ export default function DashboardPage() {
               Penetration Testing and Cyber Operations Platform
             </p>
           </div>
-          <Button className="ml-auto" asChild>
+          <Button asChild>
             <a href="/engagements/new">
               <Plus className="h-4 w-4 mr-2" />
               New Engagement
@@ -240,6 +243,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-import { cn } from "@/lib/utils";
-import { Shield } from "lucide-react";

@@ -1,30 +1,23 @@
 "use client";
+import { useState, useEffect } from "react";
 
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
 import { useAuth } from "@/components/AuthContext";
 import { apiJson } from "@/lib/api";
-import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Plus, Play } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Plus, Play } from "@/components/ui/icons";
 import Link from "next/link";
 
 const STATUS_COLORS: Record<string, string> = {
-  queued: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  running: "bg-blue-100 text-blue-800 border-blue-200",
-  succeeded: "bg-green-100 text-green-800 border-green-200",
-  failed: "bg-red-100 text-red-800 border-red-200",
-  cancelled: "bg-gray-100 text-gray-800 border-gray-200",
+  queued: "bg-yellow-100 text-yellow-800",
+  running: "bg-blue-100 text-blue-800",
+  succeeded: "bg-green-100 text-green-800",
+  failed: "bg-red-100 text-red-800",
+  cancelled: "bg-gray-100 text-gray-800",
 };
 
 interface Run {
@@ -68,7 +61,7 @@ export default function RunsPage() {
         <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
             </div>
           ) : runs.length > 0 ? (
             <Table>
@@ -84,9 +77,7 @@ export default function RunsPage() {
               <TableBody>
                 {runs.map((run) => (
                   <TableRow key={run.id} className="border-b border-input/50 hover:bg-accent/50">
-                    <TableCell className="font-mono text-xs">
-                      {run.id.slice(0, 8)}...
-                    </TableCell>
+                    <TableCell className="font-mono text-xs">{run.id.slice(0, 8)}...</TableCell>
                     <TableCell>{run.tool}</TableCell>
                     <TableCell>
                       <Badge className={STATUS_COLORS[run.status.toLowerCase()] || "bg-gray-100 text-gray-800"}>
@@ -118,6 +109,12 @@ export default function RunsPage() {
               <Play className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold">No runs</h3>
               <p className="text-muted-foreground">Start a tool run to see results here.</p>
+              <Button asChild className="mt-4">
+                <a href="/engagements/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Engagement
+                </a>
+              </Button>
             </div>
           )}
         </div>

@@ -1,4 +1,5 @@
 "use client";
+import { apiJson } from "@/lib/api";
 
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
@@ -6,12 +7,26 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Play, Plus } from "lucide-react";
+import { Play, Plus } from "@/components/ui/icons";
+
+const STATUS_COLORS: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  inactive: "bg-gray-100 text-gray-800",
+};
 
 export default function SchedulesPage() {
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [cronExpression, setCronExpression] = useState("");
   const [tool, setTool] = useState("");
   const [targets, setTargets] = useState("");
+
+  useEffect(() => {
+    apiJson<{ schedules: any[] }>("/api/schedules")
+      .then((data) => setSchedules(data.schedules || []))
+      .catch(() => setSchedules([]))
+      .finally(() => setLoading(false));
+  }, []);
 
   const createSchedule = async (e: React.FormEvent) => {
     e.preventDefault();

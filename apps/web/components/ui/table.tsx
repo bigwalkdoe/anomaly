@@ -8,13 +8,13 @@ interface TableProps extends React.HTMLAttributes<HTMLTableElement> {}
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
   ({ className, ...props }, ref) => {
     return (
-      <div className="rounded-md border border-input">
+      <div className="rounded-xl border border-input overflow-hidden">
         <table
           ref={ref}
           className={cn("w-full caption-bottom text-sm", className)}
           {...props}
         />
-        </div>
+      </div>
     );
   }
 );
@@ -57,7 +57,7 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
       <tr
         ref={ref}
         className={cn(
-          "border-b border-input/50 transition-colors hover:bg-accent/50",
+          "border-b border-input/50 transition-colors hover:bg-accent/50 hover:bg-accent-hover",
           className
         )}
         {...props}
