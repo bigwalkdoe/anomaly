@@ -13,7 +13,7 @@ from anomaly_core.auth import (
     verify_password,
 )
 from anomaly_core.mfa import verify_totp, verify_backup_code
-from anomaly_core.models import MFASecret, Role, RoleName, User
+from anomaly_core.models import LoginAttempt, MFASecret, Role, RoleName, User
 from anomaly_core.rbac import ensure_default_rbac
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -93,11 +93,53 @@ async def register(
 
 @router.post("/login", response_model=LoginResponse)
 async def login(payload: LoginRequest, db: DbSession) -> LoginResponse:
+    from datetime import UTC, datetime, timedelta
+
     user = await db.scalar(select(User).where(User.email == payload.email))
     if user is None or not verify_password(payload.password, user.password_hash):
+        # Record failed attempt and check lockout
+        attempt = LoginAttempt(
+            user_id=user.id if user else None,
+            email=payload.email,
+            success=False,
+        )
+        db.add(attempt)
+        await db.commit()
+
+        # Check lockout: 5 failed attempts within 15 minutes
+        lockout_window = datetime.now(UTC) - timedelta(minutes=15)
+        result = await db.execute(
+            select(LoginAttempt)
+            .where(LoginAttempt.email == payload.email)
+            .where(LoginAttempt.success == False)  # noqa: E712
+            .where(LoginAttempt.created_at >= lockout_window)
+        )
+        recent_failures = result.scalars().all()
+        if len(recent_failures) > 5:
+            raise HTTPException(
+                status_code=429,
+                detail="Account temporarily locked due to too many failed login attempts. Try again later.",
+            )
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
+        # Record failed attempt for inactive user too
+        attempt = LoginAttempt(
+            user_id=user.id,
+            email=payload.email,
+            success=False,
+        )
+        db.add(attempt)
+        await db.commit()
         raise HTTPException(status_code=401, detail="Inactive user")
+
+    # Record successful attempt
+    attempt = LoginAttempt(
+        user_id=user.id,
+        email=payload.email,
+        success=True,
+    )
+    db.add(attempt)
+    await db.commit()
 
     # Check if MFA is enabled for this user
     result = await db.execute(select(MFASecret).where(MFASecret.user_id == user.id))
