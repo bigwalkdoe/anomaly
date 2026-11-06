@@ -1,0 +1,6 @@
+apiVersion: v2
+name: anomaly
+description: Anomaly - Penetration Testing and Cyber Operations Platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
