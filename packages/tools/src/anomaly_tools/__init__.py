@@ -6,6 +6,7 @@ from .ffuf import FfufTool
 from .httpx import HttpxTool
 from .nmap import NmapTool
 from .nuclei import NucleiTool
+from .recon import ReconTool
 from .registry import ToolRegistry
 from .sqlmap import SqlmapTool
 from .stub import StubTool, stub_tool
@@ -24,10 +25,10 @@ __all__ = [
 
 def get_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
-    for cls in [StubTool, NmapTool, HttpxTool, NucleiTool, FfufTool, SqlmapTool]:
+    for cls in [StubTool, NmapTool, HttpxTool, ReconTool, NucleiTool, FfufTool, SqlmapTool]:
         with contextlib.suppress(Exception):
             reg.register(cast(Tool, cls()))
     return reg
 
 
-__all__.extend(["NmapTool", "HttpxTool", "NucleiTool", "FfufTool", "SqlmapTool"])
+__all__.extend(["NmapTool", "HttpxTool", "ReconTool", "NucleiTool", "FfufTool", "SqlmapTool"])
