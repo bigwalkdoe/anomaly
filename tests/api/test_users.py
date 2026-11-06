@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import Role, RoleName, User
 from sqlalchemy import select
@@ -14,7 +13,12 @@ async def test_users_me(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    admin = User(email="admin@example.com", name="Admin", password_hash=hash_password("pass"), roles=[admin_role])
+    admin = User(
+        email="admin@example.com",
+        name="Admin",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(admin)
     await db_session.commit()
     token = create_access_token(admin.id, ["admin"])

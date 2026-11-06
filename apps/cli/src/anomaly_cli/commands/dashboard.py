@@ -10,7 +10,10 @@ console = Console()
 
 
 @app.command()
-def summary(api_url: str = typer.Option("http://localhost:8000", "--api-url"), token: str = typer.Option("", "--token")):
+def summary(
+    api_url: str = typer.Option("http://localhost:8000", "--api-url"),
+    token: str = typer.Option("", "--token"),
+):
     """Show vulnerability summary"""
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     r = httpx.get(f"{api_url}/api/vulnerabilities/summary", headers=headers)

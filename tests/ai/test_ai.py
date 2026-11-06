@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from anomaly_ai import AIService, get_provider
 from anomaly_ai.providers import AIMessage
 

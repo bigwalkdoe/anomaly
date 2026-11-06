@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import pytest
-
-from anomaly_core.rbac import ensure_default_rbac
-from sqlalchemy import select
-
 from anomaly_core.db import SessionLocal
 from anomaly_core.models import Permission, Role, RoleName
+from anomaly_core.rbac import ensure_default_rbac
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio

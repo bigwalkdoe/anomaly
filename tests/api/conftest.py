@@ -24,10 +24,23 @@ async def reset_db():
         from sqlalchemy import text
 
         tables = [
-            "audit_logs", "evidence", "findings", "runs", "refresh_tokens",
-            "api_keys", "playbook_steps", "playbooks", "tags", "targets",
-            "scope_entries", "scopes", "engagement_members", "engagements",
-            "users", "role_permissions", "user_roles",
+            "audit_logs",
+            "evidence",
+            "findings",
+            "runs",
+            "refresh_tokens",
+            "api_keys",
+            "playbook_steps",
+            "playbooks",
+            "tags",
+            "targets",
+            "scope_entries",
+            "scopes",
+            "engagement_members",
+            "engagements",
+            "users",
+            "role_permissions",
+            "user_roles",
         ]
         for table in tables:
             await session.execute(text(f"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE"))

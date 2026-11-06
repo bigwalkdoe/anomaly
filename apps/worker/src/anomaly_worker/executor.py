@@ -16,12 +16,12 @@ from anomaly_core.models import (
 )
 from anomaly_core.runner import FakeRunner, RunSpec
 from anomaly_core.scope import check_scope
+from anomaly_tools import ToolSpec as AnomalyToolSpec
+from anomaly_tools import get_default_registry
+from anomaly_tools.stub import stub_tool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from anomaly_tools import ToolSpec as AnomalyToolSpec, get_default_registry
-from anomaly_tools.stub import stub_tool
 
 RISKY_PARAM_KEYS = {"allow_risky_options", "allow_risky", "risk", "level"}
 
@@ -127,7 +127,11 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         run_id=run.id,
         type=EvidenceType.log,
         storage_key=f"logs/{run.id}.txt",
-        metadata={"stdout": stdout, "stderr": stderr, "exit_code": getattr(runner_result, "exit_code", 0)},
+        metadata={
+            "stdout": stdout,
+            "stderr": stderr,
+            "exit_code": getattr(runner_result, "exit_code", 0),
+        },
     )
     db.add(ev)
 

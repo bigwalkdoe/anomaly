@@ -14,7 +14,7 @@ async def health(db: DbSession):
 
         await db.execute(text("SELECT 1"))
         return {"status": "ok", "database": "ok"}
-    except Exception as e:
+    except Exception:
         return {"status": "degraded", "database": "error"}
 
 

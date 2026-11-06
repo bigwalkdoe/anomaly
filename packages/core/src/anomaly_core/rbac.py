@@ -57,9 +57,7 @@ async def ensure_default_rbac(db: AsyncSession) -> None:
     """Idempotently seed roles, permissions, and role-permission links."""
     roles = {
         role.name: role
-        for role in (
-            await db.scalars(select(Role).options(selectinload(Role.permissions)))
-        ).all()
+        for role in (await db.scalars(select(Role).options(selectinload(Role.permissions)))).all()
     }
     for name, description in _ROLE_DESCRIPTIONS.items():
         if name not in roles:
@@ -70,9 +68,7 @@ async def ensure_default_rbac(db: AsyncSession) -> None:
     # without triggering an async lazy-load.
     roles = {
         role.name: role
-        for role in (
-            await db.scalars(select(Role).options(selectinload(Role.permissions)))
-        ).all()
+        for role in (await db.scalars(select(Role).options(selectinload(Role.permissions)))).all()
     }
 
     permission_names = {name for names in DEFAULT_PERMISSIONS.values() for name in names}
@@ -89,9 +85,7 @@ async def ensure_default_rbac(db: AsyncSession) -> None:
     # Reload so newly created objects have loaded collections (no async lazy-load).
     roles = {
         role.name: role
-        for role in (
-            await db.scalars(select(Role).options(selectinload(Role.permissions)))
-        ).all()
+        for role in (await db.scalars(select(Role).options(selectinload(Role.permissions)))).all()
     }
     permissions = {
         permission.name: permission

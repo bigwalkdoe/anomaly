@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
-
-from anomaly_core.auth import create_access_token, hash_password
-from anomaly_core.models import MFASecret, Role, RoleName, User
 from anomaly_api.routers.ws import notification_manager
+from anomaly_core.auth import create_access_token, hash_password
+from anomaly_core.models import Role, RoleName, User
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio
@@ -16,7 +15,12 @@ async def test_notification_manager_broadcast(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    user = User(email="nm@example.com", name="NM User", password_hash=hash_password("pass"), roles=[admin_role])
+    user = User(
+        email="nm@example.com",
+        name="NM User",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(user)
     await db_session.commit()
 
@@ -37,7 +41,12 @@ async def test_broadcast_notification_endpoint(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    user = User(email="broadcast@example.com", name="Broadcast User", password_hash=hash_password("pass"), roles=[admin_role])
+    user = User(
+        email="broadcast@example.com",
+        name="Broadcast User",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(user)
     await db_session.commit()
 
@@ -62,7 +71,12 @@ async def test_broadcast_notification_non_admin(client, db_session):
         pentester_role = Role(name=RoleName.pentester, description="pentester")
         db_session.add(pentester_role)
         await db_session.flush()
-    user = User(email="nobroadcast@example.com", name="No Broadcast", password_hash=hash_password("pass"), roles=[pentester_role])
+    user = User(
+        email="nobroadcast@example.com",
+        name="No Broadcast",
+        password_hash=hash_password("pass"),
+        roles=[pentester_role],
+    )
     db_session.add(user)
     await db_session.commit()
 

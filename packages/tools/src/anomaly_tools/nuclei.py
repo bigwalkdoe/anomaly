@@ -19,7 +19,9 @@ class NucleiTool:
         for line in stdout.splitlines():
             line = line.strip()
             if line:
-                findings.append(FindingDraft(title="nuclei finding", severity="medium", description=line))
+                findings.append(
+                    FindingDraft(title="nuclei finding", severity="medium", description=line)
+                )
         if not findings:
             findings.append(FindingDraft(title="nuclei scan completed", severity="info"))
         return ToolResult(findings=findings, raw=stdout)

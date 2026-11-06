@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from anomaly_ai.providers import AIMessage, AIProvider, get_provider
 from anomaly_core.audit import AuditService
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from anomaly_ai.providers import AIMessage, AIProvider, get_provider
 
 
 class AIService:
@@ -12,7 +13,9 @@ class AIService:
         self.provider = provider or get_provider()
         self.db = db
 
-    async def complete(self, messages: list[AIMessage], actor_id=None, engagement_id=None, **kwargs) -> Any:
+    async def complete(
+        self, messages: list[AIMessage], actor_id=None, engagement_id=None, **kwargs
+    ) -> Any:
         resp = await self.provider.complete(messages, **kwargs)
         if self.db is not None:
             try:
@@ -32,14 +35,19 @@ class AIService:
 
     async def draft_finding(self, run_output: str, **kwargs):
         messages = [
-            AIMessage(role="system", content="You are a security analyst. Draft a finding from tool output."),
+            AIMessage(
+                role="system",
+                content="You are a security analyst. Draft a finding from tool output.",
+            ),
             AIMessage(role="user", content=run_output),
         ]
         return await self.complete(messages, **kwargs)
 
     async def draft_report(self, findings_summary: str, **kwargs):
         messages = [
-            AIMessage(role="system", content="You are a report writer. Draft an engagement report."),
+            AIMessage(
+                role="system", content="You are a report writer. Draft an engagement report."
+            ),
             AIMessage(role="user", content=findings_summary),
         ]
         return await self.complete(messages, **kwargs)

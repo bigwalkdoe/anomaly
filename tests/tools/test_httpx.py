@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from anomaly_tools.httpx import HttpxTool
 from anomaly_tools.base import ToolSpec
+from anomaly_tools.httpx import HttpxTool
 
 
 def test_httpx_build_cmd():

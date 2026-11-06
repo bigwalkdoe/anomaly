@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from anomaly_core.auth import hash_password
 from anomaly_core.models import APIKey, User
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from anomaly_tools.sqlmap import SqlmapTool
 from anomaly_tools.base import ToolSpec
+from anomaly_tools.sqlmap import SqlmapTool
 
 
 def test_sqlmap_build_cmd_safe_defaults():
@@ -14,7 +14,9 @@ def test_sqlmap_build_cmd_safe_defaults():
 
 def test_sqlmap_risky_options_require_explicit_flag():
     tool = SqlmapTool()
-    cmd = tool.build_cmd(ToolSpec(targets=["https://example.com/?id=1"], params={"level": 5, "risk": 3}))
+    cmd = tool.build_cmd(
+        ToolSpec(targets=["https://example.com/?id=1"], params={"level": 5, "risk": 3})
+    )
     assert "--level" not in cmd
     assert "--risk" not in cmd
     cmd = tool.build_cmd(

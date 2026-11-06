@@ -14,7 +14,9 @@ async def get_dashboard(user: CurrentUser, db: DbSession):
     engagements = await db.scalar(select(func.count(Engagement.id))) or 0
     findings = await db.scalar(select(func.count(Finding.id))) or 0
     runs = await db.scalar(select(func.count(Run.id))) or 0
-    critical = await db.scalar(select(func.count(Finding.id)).where(Finding.severity == "critical")) or 0
+    critical = (
+        await db.scalar(select(func.count(Finding.id)).where(Finding.severity == "critical")) or 0
+    )
     high = await db.scalar(select(func.count(Finding.id)).where(Finding.severity == "high")) or 0
     return {
         "overview": {"engagements": engagements, "findings": findings, "runs": runs},

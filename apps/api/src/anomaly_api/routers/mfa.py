@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from typing import Annotated
-from uuid import UUID
-
 from anomaly_core.audit import AuditService
 from anomaly_core.mfa import (
     generate_backup_codes,
@@ -12,12 +9,12 @@ from anomaly_core.mfa import (
     verify_backup_code,
     verify_totp,
 )
-from anomaly_core.models import MFASecret, RoleName, User
-from anomaly_core.rbac import has_role
-from anomaly_api.deps import CurrentUser, DbSession
-from fastapi import APIRouter, Depends, HTTPException, status
+from anomaly_core.models import MFASecret
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+
+from anomaly_api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/mfa", tags=["mfa"])
 

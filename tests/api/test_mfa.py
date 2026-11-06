@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+
 import pyotp
 import pytest
-from sqlalchemy import select
-
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import MFASecret, Role, RoleName, User
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,12 @@ async def test_mfa_setup_and_verify(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    user = User(email="mfa@example.com", name="MFA User", password_hash=hash_password("pass"), roles=[admin_role])
+    user = User(
+        email="mfa@example.com",
+        name="MFA User",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(user)
     await db_session.commit()
 
@@ -58,15 +63,19 @@ async def test_mfa_disable(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    user = User(email="mfa2@example.com", name="MFA User 2", password_hash=hash_password("pass"), roles=[admin_role])
+    user = User(
+        email="mfa2@example.com",
+        name="MFA User 2",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(user)
     await db_session.flush()
 
     # Setup and enable MFA with a valid TOTP secret
     import pyotp
+
     secret = pyotp.random_base32()
-    import hashlib
-    import json
 
     backup_codes = ["abcdefgh"]
     backup_codes_hash = json.dumps([hashlib.sha256(c.encode()).hexdigest() for c in backup_codes])
@@ -101,12 +110,18 @@ async def test_mfa_login_flow(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    user = User(email="mfalogin@example.com", name="MFA Login", password_hash=hash_password("pass"), roles=[admin_role])
+    user = User(
+        email="mfalogin@example.com",
+        name="MFA Login",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(user)
     await db_session.flush()
 
     # Enable MFA
     import pyotp
+
     secret = pyotp.random_base32()
     mfa = MFASecret(
         user_id=user.id,

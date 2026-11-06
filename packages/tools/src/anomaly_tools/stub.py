@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from anomaly_tools.base import FindingDraft, ToolResult as BaseToolResult, ToolSpec
+from anomaly_tools.base import FindingDraft, ToolSpec
+from anomaly_tools.base import ToolResult as BaseToolResult
 
 
 class ToolResult:

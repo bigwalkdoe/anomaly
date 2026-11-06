@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import Annotated
 from uuid import UUID
 
-from anomaly_core.models import APIKey, RoleName, User
-from anomaly_core.rbac import has_role
-from anomaly_api.deps import CurrentUser, DbSession
-from fastapi import APIRouter, Depends, HTTPException, status
+from anomaly_core.auth import hash_password
+from anomaly_core.models import APIKey
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from anomaly_core.auth import hash_password
+from anomaly_api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/api-keys", tags=["api-keys"])
 

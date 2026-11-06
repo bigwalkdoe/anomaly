@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException
-
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import (
     Engagement,
@@ -14,6 +12,7 @@ from anomaly_core.models import (
     RoleName,
     User,
 )
+from fastapi import HTTPException
 from sqlalchemy import select
 
 
@@ -36,9 +35,7 @@ async def _make_user(
     await db_session.flush()
     for engagement, membership_role in memberships or []:
         db_session.add(
-            EngagementMember(
-                engagement_id=engagement.id, user_id=user.id, role=membership_role
-            )
+            EngagementMember(engagement_id=engagement.id, user_id=user.id, role=membership_role)
         )
     await db_session.flush()
     return user
@@ -50,7 +47,9 @@ def _auth(user: User) -> dict[str, str]:
 
 @pytest.mark.asyncio
 async def test_admin_can_access_any_engagement(client, db_session):
-    admin = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "admin@example.com", "Admin")
+    admin = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "admin@example.com", "Admin"
+    )
     eng = Engagement(name="Test", mode=EngagementMode.own_infra, owner_id=admin.id)
     db_session.add(eng)
     await db_session.commit()
@@ -61,13 +60,19 @@ async def test_admin_can_access_any_engagement(client, db_session):
 
 @pytest.mark.asyncio
 async def test_pentester_can_access_assigned_engagements_only(client, db_session):
-    owner = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner")
-    pentester = await _make_user(db_session, await _get_role(db_session, RoleName.pentester), "p@example.com", "P")
+    owner = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner"
+    )
+    pentester = await _make_user(
+        db_session, await _get_role(db_session, RoleName.pentester), "p@example.com", "P"
+    )
     eng1 = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
     eng2 = Engagement(name="E2", mode=EngagementMode.own_infra, owner_id=owner.id)
     db_session.add_all([eng1, eng2])
     await db_session.flush()
-    db_session.add(EngagementMember(engagement_id=eng1.id, user_id=pentester.id, role=RoleName.pentester))
+    db_session.add(
+        EngagementMember(engagement_id=eng1.id, user_id=pentester.id, role=RoleName.pentester)
+    )
     await db_session.commit()
 
     resp1 = await client.get(f"/api/engagements/{eng1.id}", headers=_auth(pentester))
@@ -78,7 +83,9 @@ async def test_pentester_can_access_assigned_engagements_only(client, db_session
 
 @pytest.mark.asyncio
 async def test_client_viewer_no_runs_and_no_create(client, db_session):
-    owner = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner")
+    owner = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner"
+    )
     viewer = await _make_user(
         db_session,
         await _get_role(db_session, RoleName.client_viewer),
@@ -88,7 +95,9 @@ async def test_client_viewer_no_runs_and_no_create(client, db_session):
     eng = Engagement(name="E1", mode=EngagementMode.client, owner_id=owner.id)
     db_session.add(eng)
     await db_session.flush()
-    db_session.add(EngagementMember(engagement_id=eng.id, user_id=viewer.id, role=RoleName.client_viewer))
+    db_session.add(
+        EngagementMember(engagement_id=eng.id, user_id=viewer.id, role=RoleName.client_viewer)
+    )
     await db_session.commit()
 
     headers = _auth(viewer)
@@ -116,8 +125,12 @@ async def test_client_viewer_no_runs_and_no_create(client, db_session):
 
 @pytest.mark.asyncio
 async def test_unassigned_user_gets_403_on_engagement_endpoints(client, db_session):
-    owner = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner")
-    other = await _make_user(db_session, await _get_role(db_session, RoleName.pentester), "o@example.com", "O")
+    owner = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner"
+    )
+    other = await _make_user(
+        db_session, await _get_role(db_session, RoleName.pentester), "o@example.com", "O"
+    )
     eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
     db_session.add(eng)
     await db_session.commit()
@@ -132,8 +145,12 @@ async def test_unassigned_user_gets_403_on_engagement_endpoints(client, db_sessi
 
 @pytest.mark.asyncio
 async def test_cross_engagement_finding_read_returns_404(client, db_session):
-    owner = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner")
-    p = await _make_user(db_session, await _get_role(db_session, RoleName.pentester), "p@example.com", "P")
+    owner = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner"
+    )
+    p = await _make_user(
+        db_session, await _get_role(db_session, RoleName.pentester), "p@example.com", "P"
+    )
     eng1 = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
     eng2 = Engagement(name="E2", mode=EngagementMode.own_infra, owner_id=owner.id)
     db_session.add_all([eng1, eng2])
@@ -156,13 +173,19 @@ async def test_cross_engagement_finding_read_returns_404(client, db_session):
 
 @pytest.mark.asyncio
 async def test_client_viewer_cross_engagement_finding_returns_404(client, db_session):
-    owner = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner")
-    viewer = await _make_user(db_session, await _get_role(db_session, RoleName.client_viewer), "v2@example.com", "V2")
+    owner = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner"
+    )
+    viewer = await _make_user(
+        db_session, await _get_role(db_session, RoleName.client_viewer), "v2@example.com", "V2"
+    )
     eng1 = Engagement(name="E1", mode=EngagementMode.client, owner_id=owner.id)
     eng2 = Engagement(name="E2", mode=EngagementMode.client, owner_id=owner.id)
     db_session.add_all([eng1, eng2])
     await db_session.flush()
-    db_session.add(EngagementMember(engagement_id=eng1.id, user_id=viewer.id, role=RoleName.client_viewer))
+    db_session.add(
+        EngagementMember(engagement_id=eng1.id, user_id=viewer.id, role=RoleName.client_viewer)
+    )
     finding = Finding(
         engagement_id=eng2.id,
         title="x",
@@ -182,8 +205,12 @@ async def test_client_viewer_cross_engagement_finding_returns_404(client, db_ses
 async def test_run_access_across_engagements_returns_404(client, db_session):
     from anomaly_core.models import Run, RunStatus
 
-    owner = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner")
-    p = await _make_user(db_session, await _get_role(db_session, RoleName.pentester), "p@example.com", "P")
+    owner = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "owner@example.com", "Owner"
+    )
+    p = await _make_user(
+        db_session, await _get_role(db_session, RoleName.pentester), "p@example.com", "P"
+    )
     eng1 = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
     eng2 = Engagement(name="E2", mode=EngagementMode.own_infra, owner_id=owner.id)
     db_session.add_all([eng1, eng2])
@@ -230,8 +257,12 @@ async def test_require_permission_dependency(db_session):
     """`require_permission` must be usable as a FastAPI dependency (direct call here)."""
     from anomaly_api.deps import require_permission
 
-    admin = await _make_user(db_session, await _get_role(db_session, RoleName.admin), "admin@example.com", "Admin")
-    viewer = await _make_user(db_session, await _get_role(db_session, RoleName.client_viewer), "v@example.com", "V")
+    admin = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "admin@example.com", "Admin"
+    )
+    viewer = await _make_user(
+        db_session, await _get_role(db_session, RoleName.client_viewer), "v@example.com", "V"
+    )
     await db_session.commit()
 
     dep = require_permission("runs.write")

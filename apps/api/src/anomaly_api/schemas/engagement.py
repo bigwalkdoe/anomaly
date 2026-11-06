@@ -1,24 +1,24 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-from typing import Optional
 from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class EngagementCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     mode: str = Field(default="own_infra")
-    status: Optional[str] = Field(default="draft")
-    client_name: Optional[str] = None
-    rules_of_engagement: Optional[str] = None
+    status: str | None = Field(default="draft")
+    client_name: str | None = None
+    rules_of_engagement: str | None = None
 
 
 class EngagementUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    mode: Optional[str] = None
-    status: Optional[str] = None
-    client_name: Optional[str] = None
-    rules_of_engagement: Optional[str] = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    mode: str | None = None
+    status: str | None = None
+    client_name: str | None = None
+    rules_of_engagement: str | None = None
 
 
 class EngagementResponse(BaseModel):
@@ -27,7 +27,7 @@ class EngagementResponse(BaseModel):
     mode: str
     status: str
     owner_id: UUID
-    client_name: Optional[str] = None
+    client_name: str | None = None
 
     class Config:
         from_attributes = True

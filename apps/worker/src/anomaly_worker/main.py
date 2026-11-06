@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from arq import cron
 from arq.connections import RedisSettings
 
 from .tasks import execute_run_task

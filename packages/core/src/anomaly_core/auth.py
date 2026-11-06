@@ -131,9 +131,7 @@ async def revoke_family(db: AsyncSession, family_id: str) -> None:
     await db.flush()
 
 
-async def rotate_refresh_token(
-    db: AsyncSession, token: str
-) -> tuple[str, str]:
+async def rotate_refresh_token(db: AsyncSession, token: str) -> tuple[str, str]:
     """Validate a refresh token, revoke it, and issue a new pair.
 
     Reuse of an already-revoked token revokes the whole family (theft
