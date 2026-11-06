@@ -12,7 +12,7 @@ export default function NewRunPage() {
       <div className="min-h-screen bg-background">
         <TopNav />
         <Sidebar />
-        <main className="flex-1 ml-64 p-8">
+        <main className="flex-1 md:ml-64 p-8">
           <div className="mb-8">
             <h1 className="text-2xl font-bold">New Run</h1>
             <p className="text-muted-foreground">Launch a tool run for staging review.</p>
