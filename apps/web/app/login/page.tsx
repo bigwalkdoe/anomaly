@@ -1,14 +1,22 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useAuth } from "@/components/AuthContext";
+import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck } from "@/components/ui/icons";
-import Link from "next/link";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/components/AuthContext";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -30,78 +38,89 @@ function LoginForm() {
         router.push(next && next.startsWith("/") ? next : "/");
         router.refresh();
       } else {
-        setError("Invalid email or password");
+        setError("Invalid email or password.");
       }
-    } catch (err) {
-      setError("Login failed. Please try again.");
+    } catch {
+      setError("Sign in failed. Check the service and try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md space-y-8 p-4">
-        <div className="flex flex-col items-center">
-          <ShieldCheck className="h-12 w-12 text-primary" />
-          <h2 className="text-2xl font-bold">Anomaly</h2>
-          <p className="text-muted-foreground">Sign in to your account</p>
+    <div className="relative flex min-h-screen items-center justify-center bg-background px-4 py-10">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
+      <div className="w-full max-w-md space-y-6">
+        <div className="flex flex-col items-center text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-card text-primary shadow-sm">
+            <ShieldCheck className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Anomaly</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sign in to the security operations console
+          </p>
         </div>
 
-        {error && (
-          <div className="rounded-md bg-red-50 p-3 text-sm text-red-700 border border-red-100">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sign in</CardTitle>
-              <CardDescription>Enter your credentials</CardDescription>
+        <Card className="border-border/80 shadow-sm">
+          <form onSubmit={handleSubmit} noValidate={false}>
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-xl">Sign in</CardTitle>
+              <CardDescription>
+                Use your account credentials to continue.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    type="email"
-                    required
-                    id="email"
-                    className="w-full"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
+            <CardContent className="space-y-4">
+              {error ? (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  {error}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    type="password"
-                    required
-                    id="password"
-                    className="w-full"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@company.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
             </CardContent>
-            <CardFooter>
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full"
-              >
-                {loading ? "Signing in..." : "Sign in"}
+            <CardFooter className="flex flex-col items-stretch gap-3">
+              <Button type="submit" loading={loading} className="w-full">
+                {loading ? "Signing in" : "Sign in"}
               </Button>
             </CardFooter>
-          </Card>
-        </form>
+          </form>
+        </Card>
 
-        <p className="text-sm text-center text-muted-foreground">
+        <p className="text-center text-sm text-muted-foreground">
           No account?{" "}
-          <Link href="/register" className="font-medium text-primary hover:text-primary/90">
-            Register
+          <Link
+            href="/register"
+            className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          >
+            Create one
           </Link>
         </p>
       </div>
@@ -111,7 +130,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+          Loading…
+        </div>
+      }
+    >
       <LoginForm />
     </Suspense>
   );
