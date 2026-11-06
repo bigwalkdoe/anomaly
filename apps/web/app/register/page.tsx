@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { API_BASE_URL } from "@/lib/api";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -22,14 +23,20 @@ export default function RegisterPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("http://localhost:8000/api/auth/register", {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, name, password }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
-        setError(err.detail || `Registration failed: ${res.status}`);
+        const detail =
+          typeof err?.detail === "string"
+            ? err.detail
+            : Array.isArray(err?.detail)
+              ? err.detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join(", ")
+              : null;
+        setError(detail || `Registration failed: ${res.status}`);
         return;
       }
       router.push("/login");
