@@ -198,3 +198,8 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
     await db.commit()
     await db.refresh(run)
     return run
+
+
+async def execute_run_inline(db, run_id, runner=None):
+    """Compat alias for tool-pack tests."""
+    return await execute_run(db, run_id, runner)

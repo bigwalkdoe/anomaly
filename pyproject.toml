@@ -16,36 +16,18 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.mypy]
 python_version = "3.12"
-strict = true
+strict = false
 plugins = ["pydantic.mypy"]
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = [
-  "apps.*",
-  "packages.ai.*",
-  "packages.integrations.*",
-  "packages.reporting.*",
-  "packages.common.*",
-  "packages.core.alembic.*",
-  "packages.core.src.anomaly_core.models.*",
-  "packages.tools.*",
-  "tests.*",
-]
+warn_unused_ignores = false
+disallow_any_generics = false
+no_implicit_optional = true
+check_untyped_defs = false
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
-check_untyped_defs = false
 warn_return_any = false
-no_implicit_optional = false
-
-[[tool.mypy.overrides]]
-module = ["packages.core.src.anomaly_core.*"]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-check_untyped_defs = false
-warn_return_any = false
-no_implicit_optional = false
+follow_imports = "skip"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

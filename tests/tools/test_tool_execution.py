@@ -20,9 +20,9 @@ NUCLEI_JSONL = '{"template-id":"t1","info":{"name":"N1","severity":"medium","des
 
 
 async def _setup(db_session, tool: str, targets: list[str]):
-    role = await db_session.scalar(select(Role).where(Role.name == RoleName.ADMIN))
+    role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
     if role is None:
-        role = Role(name=RoleName.ADMIN)
+        role = Role(name=RoleName.admin)
         db_session.add(role)
         await db_session.flush()
     user = User(
@@ -31,7 +31,7 @@ async def _setup(db_session, tool: str, targets: list[str]):
     db_session.add(user)
     await db_session.flush()
     db_session.add(UserRole(user_id=user.id, role_id=role.id))
-    eng = Engagement(name=f"E-{tool}", mode=EngagementMode.OWN_INFRA, owner_id=user.id)
+    eng = Engagement(name=f"E-{tool}", mode=EngagementMode.own_infra, owner_id=user.id)
     db_session.add(eng)
     await db_session.flush()
     scope = Scope(engagement_id=eng.id)
@@ -45,7 +45,7 @@ async def _setup(db_session, tool: str, targets: list[str]):
         tool=tool,
         target_ids=[],
         params={"targets": targets},
-        status=RunStatus.QUEUED,
+        status=RunStatus.queued,
     )
     db_session.add(run)
     await db_session.commit()
@@ -60,7 +60,7 @@ async def test_nmap_output_creates_findings(db_session):
     )
     await execute_run_inline(db_session, run.id, runner=runner)
     await db_session.refresh(run)
-    assert run.status == RunStatus.SUCCEEDED
+    assert run.status == RunStatus.succeeded
     count = await db_session.scalar(
         select(func.count()).select_from(Finding).where(Finding.engagement_id == eng.id)
     )
@@ -77,7 +77,7 @@ async def test_nuclei_output_creates_findings(db_session):
     )
     await execute_run_inline(db_session, run.id, runner=runner)
     await db_session.refresh(run)
-    assert run.status == RunStatus.SUCCEEDED
+    assert run.status == RunStatus.succeeded
     f = await db_session.scalar(select(Finding).where(Finding.engagement_id == eng.id))
     assert f is not None
     assert f.title == "N1"

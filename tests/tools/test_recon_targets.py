@@ -32,9 +32,9 @@ def test_parse_recon_output_discovers_targets():
 
 @pytest.mark.asyncio
 async def test_recon_creates_discovered_targets(db_session):
-    role = await db_session.scalar(select(Role).where(Role.name == RoleName.ADMIN))
+    role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
     if role is None:
-        role = Role(name=RoleName.ADMIN)
+        role = Role(name=RoleName.admin)
         db_session.add(role)
         await db_session.flush()
     user = User(
@@ -43,7 +43,7 @@ async def test_recon_creates_discovered_targets(db_session):
     db_session.add(user)
     await db_session.flush()
     db_session.add(UserRole(user_id=user.id, role_id=role.id))
-    eng = Engagement(name="Recon", mode=EngagementMode.OWN_INFRA, owner_id=user.id)
+    eng = Engagement(name="Recon", mode=EngagementMode.own_infra, owner_id=user.id)
     db_session.add(eng)
     await db_session.flush()
     db_session.add(Scope(engagement_id=eng.id))
@@ -53,7 +53,7 @@ async def test_recon_creates_discovered_targets(db_session):
         tool="recon",
         target_ids=[],
         params={"targets": ["example.com"]},
-        status=RunStatus.QUEUED,
+        status=RunStatus.queued,
     )
     db_session.add(run)
     await db_session.commit()
