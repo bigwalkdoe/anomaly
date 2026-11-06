@@ -1,72 +1,51 @@
 "use client";
-import { apiJson } from "@/lib/api";
 
-import { Sidebar } from "@/components/layout/layout";
-import { TopNav } from "@/components/layout/layout";
+import Link from "next/link";
+import { Sidebar, TopNav } from "@/components/layout/layout";
 import { RequireAuth } from "@/components/RequireAuth";
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Play, Plus } from "@/components/ui/icons";
-
-const STATUS_COLORS: Record<string, string> = {
-  active: "bg-green-100 text-green-800",
-  inactive: "bg-gray-100 text-gray-800",
-};
+import { Clock, Plus } from "@/components/ui/icons";
 
 export default function SchedulesPage() {
-  const [schedules, setSchedules] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [cronExpression, setCronExpression] = useState("");
-  const [tool, setTool] = useState("");
-  const [targets, setTargets] = useState("");
-
-  useEffect(() => {
-    apiJson<{ schedules: any[] }>("/api/schedules")
-      .then((data) => setSchedules(data.schedules || []))
-      .catch(() => setSchedules([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const createSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log("Creating schedule:", cronExpression, tool, targets);
-  };
-
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background">
-      <TopNav />
-      <Sidebar />
-      <main className="flex-1 ml-64 p-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl font-bold">Schedules</h1>
-            <p className="text-muted-foreground">Schedule automated tool runs</p>
-          </div>
-          <Button className="ml-auto" asChild>
-            <a href="/schedules/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Schedule
-            </a>
-          </Button>
-        </div>
-
-        <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden">
-          <div className="rounded-md border border-input p-12 text-center">
-            <Play className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold">No schedules</h3>
-            <p className="text-muted-foreground">Schedule automated scans to run on a recurring basis.</p>
-            <Button asChild className="mt-4">
-              <a href="/schedules/new">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Schedule
-              </a>
+      <div className="min-h-screen bg-background text-foreground">
+        <TopNav />
+        <Sidebar />
+        <main className="md:ml-64 p-4 pt-6 md:p-8">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Automation
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight">Schedules</h1>
+              <p className="text-sm text-muted-foreground">
+                Schedule automated tool runs on a recurring basis.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href="/schedules/new">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                New schedule
+              </Link>
             </Button>
           </div>
-        </div>
-      </main>
+
+          <div className="rounded-xl border border-border bg-card p-8">
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center">
+              <Clock className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">No schedules</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Schedule recurring scans and automations when this workflow is enabled.
+                </p>
+              </div>
+              <Button asChild size="sm" className="mt-2">
+                <Link href="/schedules/new">Create schedule</Link>
+              </Button>
+            </div>
+          </div>
+        </main>
       </div>
     </RequireAuth>
   );

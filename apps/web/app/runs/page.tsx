@@ -1,24 +1,23 @@
 "use client";
-import { useState, useEffect } from "react";
 
-import { Sidebar } from "@/components/layout/layout";
-import { TopNav } from "@/components/layout/layout";
-import { RequireAuth } from "@/components/RequireAuth";
-import { apiJson } from "@/lib/api";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Play } from "@/components/ui/icons";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
-const STATUS_COLORS: Record<string, string> = {
-  queued: "bg-yellow-100 text-yellow-800",
-  running: "bg-blue-100 text-blue-800",
-  succeeded: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-100 text-gray-800",
-};
+import { Sidebar, TopNav } from "@/components/layout/layout";
+import { RequireAuth } from "@/components/RequireAuth";
+import { apiJson } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { statusVariant } from "@/components/ui/status";
+import { ArrowRight, Plus, Play } from "@/components/ui/icons";
 
 interface Run {
   id: string;
@@ -26,6 +25,15 @@ interface Run {
   tool: string;
   status: string;
   scope_warning: boolean;
+}
+
+function RunStatusBadge({ value }: { value: string }) {
+  const variant = statusVariant("run", value);
+  return (
+    <Badge variant="outline" className={variant.className}>
+      {variant.label}
+    </Badge>
+  );
 }
 
 export default function RunsPage() {
@@ -41,84 +49,98 @@ export default function RunsPage() {
 
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background">
-      <TopNav />
-      <Sidebar />
-      <main className="flex-1 ml-64 p-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl font-bold">Runs</h1>
-            <p className="text-muted-foreground">Monitor tool execution runs</p>
+      <div className="min-h-screen bg-background text-foreground">
+        <TopNav />
+        <Sidebar />
+        <main className="md:ml-64 p-4 pt-6 md:p-8">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Execution
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
+              <p className="text-sm text-muted-foreground">
+                Monitor tool execution status and scope signals.
+              </p>
+            </div>
+            <Button asChild>
+              <Link href="/engagements/new">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                New run
+              </Link>
+            </Button>
           </div>
-          <Button className="ml-auto" asChild>
-            <a href="/engagements/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Run
-            </a>
-          </Button>
-        </div>
 
-        <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden">
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-            </div>
-          ) : runs.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-1/6">ID</TableHead>
-                  <TableHead className="w-1/6">Tool</TableHead>
-                  <TableHead className="w-1/6">Status</TableHead>
-                  <TableHead className="w-1/6">Scope Warning</TableHead>
-                  <TableHead className="w-1/6 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.map((run) => (
-                  <TableRow key={run.id} className="border-b border-input/50 hover:bg-accent/50">
-                    <TableCell className="font-mono text-xs">{run.id.slice(0, 8)}...</TableCell>
-                    <TableCell>{run.tool}</TableCell>
-                    <TableCell>
-                      <Badge className={STATUS_COLORS[run.status.toLowerCase()] || "bg-gray-100 text-gray-800"}>
-                        {run.status.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {run.scope_warning ? (
-                        <span className="text-xs text-orange-600">⚠ Warning</span>
-                      ) : (
-                        <span className="text-xs text-green-600">✓ Clean</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/runs/${run.id}`} className="p-2 text-muted-foreground hover:text-primary">
-                        <span className="relative inline-block">
-                          <span className="absolute inset-0 flex items-center">
-                            <span className="h-4 w-4" />
-                          </span>
-                        </span>
-                      </Link>
-                    </TableCell>
+          <div className="rounded-xl border border-border bg-card">
+            {loading ? (
+              <div className="flex h-64 items-center justify-center">
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  Loading runs…
+                </div>
+              </div>
+            ) : runs.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Run</TableHead>
+                    <TableHead>Tool</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="rounded-lg border border-input bg-card p-12 text-center">
-              <Play className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold">No runs</h3>
-              <p className="text-muted-foreground">Start a tool run to see results here.</p>
-              <Button asChild className="mt-4">
-                <a href="/engagements/new">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Engagement
-                </a>
-              </Button>
-            </div>
-          )}
-        </div>
-      </main>
+                </TableHeader>
+                <TableBody>
+                  {runs.map((run) => (
+                    <TableRow key={run.id}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {run.id.slice(0, 8)}…
+                      </TableCell>
+                      <TableCell className="font-medium">{run.tool}</TableCell>
+                      <TableCell>
+                        <RunStatusBadge value={run.status} />
+                      </TableCell>
+                      <TableCell>
+                        {run.scope_warning ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-status-warning text-status-warning-foreground border-status-warning-border"
+                          >
+                            Scope warning
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">No warning</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button asChild variant="ghost" size="icon" className="h-8 w-8">
+                          <Link href={`/runs/${run.id}`} aria-label={`View run ${run.id}`}>
+                            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                          </Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="p-8">
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center">
+                  <Play className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">No runs</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Start a tool run from an engagement to see results here.
+                    </p>
+                  </div>
+                  <Button asChild size="sm" className="mt-2">
+                    <Link href="/engagements/new">Create engagement</Link>
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     </RequireAuth>
   );
