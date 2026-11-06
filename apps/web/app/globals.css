@@ -23,6 +23,41 @@
   --border: oklch(0.89 0.01 250);
   --input: oklch(0.89 0.01 250);
   --ring: oklch(0.62 0.13 225);
+
+  --severity-critical: oklch(0.94 0.045 25);
+  --severity-critical-foreground: oklch(0.42 0.18 27);
+  --severity-critical-border: oklch(0.78 0.12 27);
+  --severity-high: oklch(0.95 0.045 55);
+  --severity-high-foreground: oklch(0.46 0.14 50);
+  --severity-high-border: oklch(0.8 0.11 52);
+  --severity-medium: oklch(0.96 0.05 85);
+  --severity-medium-foreground: oklch(0.48 0.12 80);
+  --severity-medium-border: oklch(0.84 0.11 82);
+  --severity-low: oklch(0.95 0.03 255);
+  --severity-low-foreground: oklch(0.45 0.09 255);
+  --severity-low-border: oklch(0.82 0.06 255);
+  --severity-info: oklch(0.955 0.01 250);
+  --severity-info-foreground: oklch(0.46 0.02 255);
+  --severity-info-border: oklch(0.84 0.015 250);
+  --severity-unknown: oklch(0.955 0.008 250);
+  --severity-unknown-foreground: oklch(0.48 0.02 255);
+  --severity-unknown-border: oklch(0.84 0.01 250);
+
+  --status-success: oklch(0.95 0.045 155);
+  --status-success-foreground: oklch(0.42 0.12 155);
+  --status-success-border: oklch(0.8 0.09 155);
+  --status-warning: oklch(0.96 0.05 85);
+  --status-warning-foreground: oklch(0.48 0.12 80);
+  --status-warning-border: oklch(0.84 0.11 82);
+  --status-danger: oklch(0.94 0.045 25);
+  --status-danger-foreground: oklch(0.42 0.18 27);
+  --status-danger-border: oklch(0.78 0.12 27);
+  --status-info: oklch(0.95 0.03 235);
+  --status-info-foreground: oklch(0.44 0.1 235);
+  --status-info-border: oklch(0.82 0.07 235);
+  --status-neutral: oklch(0.955 0.008 250);
+  --status-neutral-foreground: oklch(0.48 0.02 255);
+  --status-neutral-border: oklch(0.84 0.01 250);
 }
 
 .dark {
@@ -45,6 +80,41 @@
   --border: oklch(0.32 0.014 255);
   --input: oklch(0.32 0.014 255);
   --ring: oklch(0.7 0.12 215);
+
+  --severity-critical: oklch(0.28 0.07 25);
+  --severity-critical-foreground: oklch(0.78 0.14 25);
+  --severity-critical-border: oklch(0.42 0.12 25);
+  --severity-high: oklch(0.29 0.06 55);
+  --severity-high-foreground: oklch(0.8 0.13 55);
+  --severity-high-border: oklch(0.43 0.1 55);
+  --severity-medium: oklch(0.3 0.055 85);
+  --severity-medium-foreground: oklch(0.84 0.12 85);
+  --severity-medium-border: oklch(0.44 0.09 85);
+  --severity-low: oklch(0.28 0.04 255);
+  --severity-low-foreground: oklch(0.78 0.08 255);
+  --severity-low-border: oklch(0.4 0.06 255);
+  --severity-info: oklch(0.27 0.015 250);
+  --severity-info-foreground: oklch(0.75 0.02 250);
+  --severity-info-border: oklch(0.38 0.02 250);
+  --severity-unknown: oklch(0.27 0.012 255);
+  --severity-unknown-foreground: oklch(0.72 0.015 250);
+  --severity-unknown-border: oklch(0.38 0.015 255);
+
+  --status-success: oklch(0.28 0.055 155);
+  --status-success-foreground: oklch(0.78 0.11 155);
+  --status-success-border: oklch(0.4 0.08 155);
+  --status-warning: oklch(0.3 0.055 85);
+  --status-warning-foreground: oklch(0.84 0.12 85);
+  --status-warning-border: oklch(0.44 0.09 85);
+  --status-danger: oklch(0.28 0.07 25);
+  --status-danger-foreground: oklch(0.78 0.14 25);
+  --status-danger-border: oklch(0.42 0.12 25);
+  --status-info: oklch(0.28 0.045 235);
+  --status-info-foreground: oklch(0.78 0.09 230);
+  --status-info-border: oklch(0.4 0.07 235);
+  --status-neutral: oklch(0.27 0.012 255);
+  --status-neutral-foreground: oklch(0.72 0.015 250);
+  --status-neutral-border: oklch(0.38 0.015 255);
 }
 
 @theme inline {
@@ -68,6 +138,41 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+
+  --color-severity-critical: var(--severity-critical);
+  --color-severity-critical-foreground: var(--severity-critical-foreground);
+  --color-severity-critical-border: var(--severity-critical-border);
+  --color-severity-high: var(--severity-high);
+  --color-severity-high-foreground: var(--severity-high-foreground);
+  --color-severity-high-border: var(--severity-high-border);
+  --color-severity-medium: var(--severity-medium);
+  --color-severity-medium-foreground: var(--severity-medium-foreground);
+  --color-severity-medium-border: var(--severity-medium-border);
+  --color-severity-low: var(--severity-low);
+  --color-severity-low-foreground: var(--severity-low-foreground);
+  --color-severity-low-border: var(--severity-low-border);
+  --color-severity-info: var(--severity-info);
+  --color-severity-info-foreground: var(--severity-info-foreground);
+  --color-severity-info-border: var(--severity-info-border);
+  --color-severity-unknown: var(--severity-unknown);
+  --color-severity-unknown-foreground: var(--severity-unknown-foreground);
+  --color-severity-unknown-border: var(--severity-unknown-border);
+
+  --color-status-success: var(--status-success);
+  --color-status-success-foreground: var(--status-success-foreground);
+  --color-status-success-border: var(--status-success-border);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-warning-border: var(--status-warning-border);
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-foreground: var(--status-danger-foreground);
+  --color-status-danger-border: var(--status-danger-border);
+  --color-status-info: var(--status-info);
+  --color-status-info-foreground: var(--status-info-foreground);
+  --color-status-info-border: var(--status-info-border);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-foreground: var(--status-neutral-foreground);
+  --color-status-neutral-border: var(--status-neutral-border);
 }
 
 @layer base {
