@@ -148,7 +148,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             parsed = tool.parse(parse_input)
         except TypeError:
             try:
-                parsed = tool.parse(parse_input, targets, tool_params)
+                parsed = tool.parse(parse_input, targets, tool_params)  # type: ignore[call-arg]
             except Exception:
                 parsed = None
         except Exception:
