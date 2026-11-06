@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-import os
-
 import pytest
-
 from anomaly_core.auth import create_access_token, hash_password
-from anomaly_core.models import Engagement, EngagementMode, Playbook, PlaybookStep, Role, RoleName, User
+from anomaly_core.models import (
+    Engagement,
+    EngagementMode,
+    Playbook,
+    PlaybookStep,
+    Role,
+    RoleName,
+    User,
+)
 from sqlalchemy import select
 
 
@@ -17,7 +22,12 @@ async def test_execute_playbook(client, db_session, monkeypatch):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    owner = User(email="owner@example.com", name="Owner", password_hash=hash_password("pass"), roles=[admin_role])
+    owner = User(
+        email="owner@example.com",
+        name="Owner",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(owner)
     await db_session.flush()
     eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
@@ -26,8 +36,12 @@ async def test_execute_playbook(client, db_session, monkeypatch):
     pb = Playbook(engagement_id=eng.id, name="Recon Playbook", description="Recon steps")
     db_session.add(pb)
     await db_session.flush()
-    db_session.add(PlaybookStep(playbook_id=pb.id, name="nmap_scan", tool="nmap", params={}, order=1))
-    db_session.add(PlaybookStep(playbook_id=pb.id, name="httpx_probe", tool="httpx", params={}, order=2))
+    db_session.add(
+        PlaybookStep(playbook_id=pb.id, name="nmap_scan", tool="nmap", params={}, order=1)
+    )
+    db_session.add(
+        PlaybookStep(playbook_id=pb.id, name="httpx_probe", tool="httpx", params={}, order=2)
+    )
     await db_session.commit()
 
     token = create_access_token(owner.id, ["admin"])

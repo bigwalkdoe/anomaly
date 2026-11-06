@@ -1,14 +1,15 @@
 """base
 
 Revision ID: 0001
-Revises: 
+Revises:
 Create Date: 2026-11-03 22:20:11.749055
 
 """
+
 from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
-revision: str = '0001'
+revision: str = "0001"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

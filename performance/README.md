@@ -27,24 +27,24 @@ Create `locustfile.py`:
 ```python
 from locust import HttpUser, task, between
 
+
 class AnomalyUser(HttpUser):
     wait_time = between(1, 3)
-    
+
     def on_start(self):
         # Login
-        self.client.post("/api/auth/login", json={
-            "email": "test@example.com",
-            "password": "password"
-        })
-    
+        self.client.post(
+            "/api/auth/login", json={"email": "test@example.com", "password": "password"}
+        )
+
     @task
     def list_engagements(self):
         self.client.get("/api/engagements")
-    
+
     @task
     def list_findings(self):
         self.client.get("/api/engagements/1/findings")
-    
+
     @task
     def dashboard(self):
         self.client.get("/api/dashboard")

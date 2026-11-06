@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated
-from uuid import UUID
-
 from anomaly_core.models import RoleName
 from anomaly_core.rbac import has_role
-from anomaly_api.deps import CurrentUser, DbSession
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException
+
+from anomaly_api.deps import CurrentUser
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 

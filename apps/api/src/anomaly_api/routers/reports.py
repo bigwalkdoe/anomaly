@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Annotated
 from uuid import UUID
 
-from anomaly_core.models import Engagement, Finding, FindingSeverity
+from anomaly_core.models import Engagement, Finding
 from anomaly_reporting import ReportGenerator
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
-from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
+from anomaly_api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 

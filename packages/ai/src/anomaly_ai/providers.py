@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 
 @dataclass
@@ -23,6 +23,7 @@ class AIResponse:
 
 class AIProvider(Protocol):
     name: str
+
     async def complete(self, messages: list[AIMessage], **kwargs) -> AIResponse:  # pragma: no cover
         ...
 
@@ -37,7 +38,11 @@ class OllamaProvider:
     async def complete(self, messages: list[AIMessage], **kwargs) -> AIResponse:
         # Stub implementation for tests
         content = "\n".join(m.content for m in messages if m.role == "user")[-200:]
-        return AIResponse(content=f"AI: {content}", model=self.model, usage={"prompt_tokens": 10, "completion_tokens": 20})
+        return AIResponse(
+            content=f"AI: {content}",
+            model=self.model,
+            usage={"prompt_tokens": 10, "completion_tokens": 20},
+        )
 
 
 class OpenAIProvider:
@@ -49,7 +54,11 @@ class OpenAIProvider:
 
     async def complete(self, messages: list[AIMessage], **kwargs) -> AIResponse:
         content = "\n".join(m.content for m in messages if m.role == "user")[-200:]
-        return AIResponse(content=f"OpenAI: {content}", model=self.model, usage={"prompt_tokens": 15, "completion_tokens": 25})
+        return AIResponse(
+            content=f"OpenAI: {content}",
+            model=self.model,
+            usage={"prompt_tokens": 15, "completion_tokens": 25},
+        )
 
 
 class AnthropicProvider:
@@ -61,7 +70,11 @@ class AnthropicProvider:
 
     async def complete(self, messages: list[AIMessage], **kwargs) -> AIResponse:
         content = "\n".join(m.content for m in messages if m.role == "user")[-200:]
-        return AIResponse(content=f"Anthropic: {content}", model=self.model, usage={"prompt_tokens": 12, "completion_tokens": 22})
+        return AIResponse(
+            content=f"Anthropic: {content}",
+            model=self.model,
+            usage={"prompt_tokens": 12, "completion_tokens": 22},
+        )
 
 
 def get_provider(name: str = "ollama", **kwargs) -> AIProvider:

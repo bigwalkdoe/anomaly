@@ -1,4 +1,3 @@
-
 import uuid
 
 import pytest
@@ -54,6 +53,7 @@ async def test_create_user(session):
 @pytest.mark.asyncio
 async def test_engagement_defaults(session):
     import uuid
+
     user = User(email=f"owner-{uuid.uuid4()}@example.com", name="Owner", password_hash="x")
     session.add(user)
     await session.flush()

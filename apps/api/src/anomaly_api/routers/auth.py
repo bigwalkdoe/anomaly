@@ -12,7 +12,6 @@ from anomaly_core.auth import (
     store_refresh_token,
     verify_password,
 )
-from anomaly_core.mfa import verify_totp, verify_backup_code
 from anomaly_core.models import LoginAttempt, MFASecret, Role, RoleName, User
 from anomaly_core.rbac import ensure_default_rbac
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -63,8 +62,7 @@ async def register(
     is_first_user = (user_count or 0) == 0
 
     if not is_first_user and (
-        current_user is None
-        or not any(role.name == RoleName.admin for role in current_user.roles)
+        current_user is None or not any(role.name == RoleName.admin for role in current_user.roles)
     ):
         raise HTTPException(status_code=403, detail="Only admins may register users")
 
@@ -118,7 +116,10 @@ async def login(payload: LoginRequest, db: DbSession) -> LoginResponse:
         if len(recent_failures) > 5:
             raise HTTPException(
                 status_code=429,
-                detail="Account temporarily locked due to too many failed login attempts. Try again later.",
+                detail=(
+                    "Account temporarily locked due to too many failed login attempts. "
+                    "Try again later."
+                ),
             )
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:

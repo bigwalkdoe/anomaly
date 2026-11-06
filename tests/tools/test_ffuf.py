@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from anomaly_tools.ffuf import FfufTool
 from anomaly_tools.base import ToolSpec
+from anomaly_tools.ffuf import FfufTool
 
 
 def test_ffuf_build_cmd():

@@ -3,27 +3,31 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import HTTPException
-from fastapi.exceptions import RequestValidationError
-
 from anomaly_core.db import SessionLocal
 from anomaly_core.rbac import ensure_default_rbac
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 
-from anomaly_api.middleware import http_exception_handler, validation_exception_handler
-from anomaly_api.middleware import RateLimitMiddleware, RequestIDMiddleware
+from anomaly_api.middleware import (
+    RateLimitMiddleware,
+    RequestIDMiddleware,
+    http_exception_handler,
+    validation_exception_handler,
+)
 from anomaly_api.routers import (
     api_keys,
     audit,
     auth,
-    mfa,
     dashboard,
     engagements,
+    evidence,
     findings,
     health,
     metrics,
+    mfa,
     notifications,
+    playbooks,
     reports,
     runs,
     schedules,
@@ -32,13 +36,10 @@ from anomaly_api.routers import (
     tags,
     upload,
     users,
+    vulnerabilities,
     webhooks,
     ws,
-    playbooks,
-    vulnerabilities,
-    evidence,
 )
-
 
 tags_metadata = [
     {

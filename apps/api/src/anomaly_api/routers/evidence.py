@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import Annotated
 from uuid import UUID
 
-from anomaly_core.audit import AuditService
 from anomaly_core.models import Evidence
-from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
+
+from anomaly_api.deps import CurrentUser, DbSession
 
 router = APIRouter(prefix="/api/evidence", tags=["evidence"])
 

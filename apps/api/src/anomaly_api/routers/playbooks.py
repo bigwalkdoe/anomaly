@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from typing import Annotated, Optional
+import contextlib
+from typing import Annotated
 from uuid import UUID
 
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
 from anomaly_core.models import Engagement, Playbook, PlaybookStep, Run, RunStatus
 from anomaly_core.rbac import engagement_accessible
-from anomaly_core.runner import FakeRunner, RunSpec
+from anomaly_core.runner import FakeRunner
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/api", tags=["playbooks"])
 
 class PlaybookStepCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: str | None = None
     tool: str = Field(..., min_length=1, max_length=255)
     params: dict = Field(default_factory=dict)
     order: int = Field(default=0)
@@ -30,7 +31,7 @@ class PlaybookStepResponse(BaseModel):
     id: UUID
     playbook_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     tool: str
     params: dict
     order: int
@@ -41,20 +42,20 @@ class PlaybookStepResponse(BaseModel):
 
 class PlaybookCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: str | None = None
     steps: list[PlaybookStepCreate] = Field(default_factory=list)
 
 
 class PlaybookUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    description: Optional[str] = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
 
 
 class PlaybookResponse(BaseModel):
     id: UUID
     engagement_id: UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     steps: list[PlaybookStepResponse] = []
 
     class Config:
@@ -82,7 +83,11 @@ async def list_playbooks(
     return [PlaybookResponse.model_validate(p) for p in playbooks]
 
 
-@router.post("/engagements/{engagement_id}/playbooks", response_model=PlaybookResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/engagements/{engagement_id}/playbooks",
+    response_model=PlaybookResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_playbook(
     engagement_id: UUID,
     payload: PlaybookCreate,
@@ -141,7 +146,9 @@ async def get_playbook(
     return PlaybookResponse.model_validate(playbook)
 
 
-@router.patch("/engagements/{engagement_id}/playbooks/{playbook_id}", response_model=PlaybookResponse)
+@router.patch(
+    "/engagements/{engagement_id}/playbooks/{playbook_id}", response_model=PlaybookResponse
+)
 async def update_playbook(
     engagement_id: UUID,
     playbook_id: UUID,
@@ -170,7 +177,9 @@ async def update_playbook(
     return PlaybookResponse.model_validate(playbook)
 
 
-@router.delete("/engagements/{engagement_id}/playbooks/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/engagements/{engagement_id}/playbooks/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_playbook(
     engagement_id: UUID,
     playbook_id: UUID,
@@ -191,7 +200,11 @@ async def delete_playbook(
     return None
 
 
-@router.post("/engagements/{engagement_id}/playbooks/{playbook_id}/execute", response_model=PlaybookExecuteResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/engagements/{engagement_id}/playbooks/{playbook_id}/execute",
+    response_model=PlaybookExecuteResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def execute_playbook(
     engagement_id: UUID,
     playbook_id: UUID,
@@ -256,10 +269,8 @@ async def execute_playbook(
 
         async with SessionLocal() as db2:
             for rid in run_ids:
-                try:
+                with contextlib.suppress(Exception):
                     await execute_run(db2, rid, runner)
-                except Exception:
-                    pass
 
     return PlaybookExecuteResponse(
         playbook_id=playbook_id,

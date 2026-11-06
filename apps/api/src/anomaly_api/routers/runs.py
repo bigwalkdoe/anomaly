@@ -8,12 +8,12 @@ from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
 from anomaly_core.models import Engagement, RoleName, Run, RunStatus
 from anomaly_core.scope import check_scope
-from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
+from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
 
 router = APIRouter(tags=["runs"])
 
@@ -35,24 +35,32 @@ class RunResponse(BaseModel):
 
 @router.get("/api/engagements/{engagement_id}/runs", response_model=list[RunResponse])
 async def list_runs(
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     db: DbSession,
 ):
     runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement.id))).all()
     return [RunResponse.model_validate(r) for r in runs]
 
 
-@router.post("/api/engagements/{engagement_id}/runs", response_model=RunResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/api/engagements/{engagement_id}/runs",
+    response_model=RunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def create_run(
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     payload: RunCreate,
     user: CurrentUser,
     db: DbSession,
 ):
     targets = payload.targets
     try:
-        from sqlalchemy.orm import selectinload
         from anomaly_core.models import Scope
+        from sqlalchemy.orm import selectinload
 
         res = await db.execute(
             select(Engagement)
@@ -114,7 +122,7 @@ async def get_run(run_id: str, user: CurrentUser, db: DbSession):
     try:
         rid = UUID(str(run_id))
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid run_id")
+        raise HTTPException(status_code=400, detail="Invalid run_id") from None
     run = await db.get(Run, rid)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")

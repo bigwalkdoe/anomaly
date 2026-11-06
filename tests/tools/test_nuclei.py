@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from anomaly_tools.nuclei import NucleiTool
 from anomaly_tools.base import ToolSpec
+from anomaly_tools.nuclei import NucleiTool
 
 
 def test_nuclei_build_cmd():

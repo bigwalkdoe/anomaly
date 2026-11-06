@@ -1,23 +1,32 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import UUID
 
 from anomaly_core.audit import AuditService
-from anomaly_core.models import Engagement, EngagementMember, EngagementMode, EngagementStatus, RoleName, Scope, ScopeEntry, ScopeEntryKind, Target, TargetType
-from anomaly_core.rbac import engagement_accessible
+from anomaly_core.models import (
+    Engagement,
+    EngagementMember,
+    EngagementMode,
+    EngagementStatus,
+    RoleName,
+    Scope,
+    ScopeEntry,
+    ScopeEntryKind,
+    Target,
+    TargetType,
+)
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import select
+
+from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.schemas.engagement import (
     EngagementCreate,
-    EngagementUpdate,
     EngagementResponse,
+    EngagementUpdate,
     ScopeUpdate,
     TargetCreate,
     TargetResponse,
 )
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
-
-from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -27,11 +36,17 @@ async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, o
     if any(r.name == RoleName.admin for r in user.roles):
         engagements = (await db.scalars(select(Engagement).offset(offset).limit(limit))).all()
     else:
-        members = (await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))).all()
+        members = (
+            await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))
+        ).all()
         eng_ids = [m.engagement_id for m in members]
         if not eng_ids:
             return []
-        engagements = (await db.scalars(select(Engagement).where(Engagement.id.in_(eng_ids)).offset(offset).limit(limit))).all()
+        engagements = (
+            await db.scalars(
+                select(Engagement).where(Engagement.id.in_(eng_ids)).offset(offset).limit(limit)
+            )
+        ).all()
     return [EngagementResponse.model_validate(e) for e in engagements]
 
 
@@ -71,7 +86,9 @@ async def get_engagement(
 @router.patch("/{engagement_id}", response_model=EngagementResponse)
 async def update_engagement(
     payload: EngagementUpdate,
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     user: CurrentUser,
     db: DbSession,
 ):
@@ -102,7 +119,9 @@ async def update_engagement(
 
 @router.delete("/{engagement_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_engagement(
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.admin))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.admin))
+    ],
     user: CurrentUser,
     db: DbSession,
 ):
@@ -123,7 +142,9 @@ async def delete_engagement(
 @router.put("/{engagement_id}/scope")
 async def update_scope(
     payload: ScopeUpdate,
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     db: DbSession,
 ):
     scope = engagement.scope
@@ -143,10 +164,14 @@ async def update_scope(
     return {"status": "ok"}
 
 
-@router.post("/{engagement_id}/targets", response_model=TargetResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{engagement_id}/targets", response_model=TargetResponse, status_code=status.HTTP_201_CREATED
+)
 async def add_target(
     payload: TargetCreate,
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     db: DbSession,
     user: CurrentUser,
 ):

@@ -33,6 +33,8 @@ class SqlmapTool:
             )
         if not findings:
             findings.append(
-                FindingDraft(title="sqlmap completed", severity="info", description="Scan completed")
+                FindingDraft(
+                    title="sqlmap completed", severity="info", description="Scan completed"
+                )
             )
         return ToolResult(findings=findings, raw=stdout)

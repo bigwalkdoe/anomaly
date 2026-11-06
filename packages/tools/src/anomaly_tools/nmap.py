@@ -43,5 +43,9 @@ class NmapTool:
                     )
                 )
         if not findings:
-            findings.append(FindingDraft(title="nmap scan completed", severity="info", description="Scan completed"))
+            findings.append(
+                FindingDraft(
+                    title="nmap scan completed", severity="info", description="Scan completed"
+                )
+            )
         return ToolResult(findings=findings, raw=stdout)

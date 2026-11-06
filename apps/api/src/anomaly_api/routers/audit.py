@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
 from anomaly_core.audit import get_audit_log
@@ -16,8 +17,8 @@ router = APIRouter(prefix="/api", tags=["audit"])
 async def list_audit(
     user: CurrentUser,
     db: DbSession,
-    engagement_id: UUID | None = Query(default=None),
-    limit: int = Query(default=100),
+    engagement_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int, Query()] = 100,
     offset: int = 0,
 ):
     if engagement_id is not None:

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
-
 from anomaly_core.auth import hash_password
-from anomaly_core.models import LoginAttempt, Role, RoleName, User
+from anomaly_core.models import Role, RoleName, User
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio
@@ -14,12 +13,17 @@ async def test_account_lockout_after_5_failures(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    user = User(email="lockout@example.com", name="Lockout User", password_hash=hash_password("pass"), roles=[admin_role])
+    user = User(
+        email="lockout@example.com",
+        name="Lockout User",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(user)
     await db_session.commit()
 
     # Make 5 failed login attempts
-    for i in range(5):
+    for _ in range(5):
         resp = await client.post(
             "/api/auth/login",
             json={"email": "lockout@example.com", "password": "wrongpassword"},
@@ -43,12 +47,17 @@ async def test_successful_login_clears_lockout(client, db_session):
         admin_role = Role(name=RoleName.admin, description="admin")
         db_session.add(admin_role)
         await db_session.flush()
-    user = User(email="clearlock@example.com", name="Clear Lock", password_hash=hash_password("correctpass"), roles=[admin_role])
+    user = User(
+        email="clearlock@example.com",
+        name="Clear Lock",
+        password_hash=hash_password("correctpass"),
+        roles=[admin_role],
+    )
     db_session.add(user)
     await db_session.commit()
 
     # Make 4 failed attempts
-    for i in range(4):
+    for _ in range(4):
         resp = await client.post(
             "/api/auth/login",
             json={"email": "clearlock@example.com", "password": "wrongpassword"},

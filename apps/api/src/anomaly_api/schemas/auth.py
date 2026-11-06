@@ -28,6 +28,7 @@ class TokenResponse(BaseModel):
 
 class LoginResponse(BaseModel):
     """Login response - either tokens (no MFA) or mfa_required (MFA needed)."""
+
     mfa_required: bool = False
     access_token: str | None = None
     refresh_token: str | None = None

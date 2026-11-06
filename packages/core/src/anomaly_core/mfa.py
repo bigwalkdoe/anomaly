@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
-import hashlib
-from typing import Any
 
 import pyotp
 
@@ -32,16 +31,12 @@ def generate_backup_codes(count: int = 8) -> list[str]:
 
 def hash_backup_codes(codes: list[str]) -> str:
     """Hash backup codes for storage."""
-    import hashlib
 
-    return json.dumps(
-        [hashlib.sha256(code.encode()).hexdigest() for code in codes]
-    )
+    return json.dumps([hashlib.sha256(code.encode()).hexdigest() for code in codes])
 
 
 def verify_backup_code(stored_hashes_json: str, code: str) -> bool:
     """Verify a backup code against stored hashes."""
-    import hashlib
 
     code_hash = hashlib.sha256(code.encode()).hexdigest()
     stored_hashes = json.loads(stored_hashes_json or "[]")

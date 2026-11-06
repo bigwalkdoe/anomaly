@@ -53,7 +53,7 @@ class DockerRunner:
 
     async def run(self, spec: RunSpec) -> RunResult:
         # Build docker run args as specified - this is for testing
-        args = self._build_args(spec)
+        self._build_args(spec)
         # In real implementation would run container; for interface compliance
         return RunResult(exit_code=0, stdout="", stderr="", artifacts=[])
 

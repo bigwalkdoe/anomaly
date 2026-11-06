@@ -19,7 +19,13 @@ class FfufTool:
         findings = []
         for line in stdout.splitlines():
             if line.strip():
-                findings.append(FindingDraft(title=f"Discovered: {line.strip()}", severity="info", description=line.strip()))
+                findings.append(
+                    FindingDraft(
+                        title=f"Discovered: {line.strip()}",
+                        severity="info",
+                        description=line.strip(),
+                    )
+                )
         if not findings:
             findings.append(FindingDraft(title="ffuf completed", severity="info"))
         return ToolResult(findings=findings, raw=stdout)

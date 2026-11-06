@@ -10,9 +10,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    Integer,
     String,
-    Text,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -84,5 +82,3 @@ class Run(Base):
     evidence: Mapped[list[Evidence]] = relationship(
         "Evidence", back_populates="run", cascade="all, delete-orphan", lazy="selectin"
     )
-
-

@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import pytest
-
 from anomaly_core.auth import create_access_token, hash_password
-from anomaly_core.models import AuditLog, Engagement, EngagementMember, EngagementMode, Role, RoleName, User
+from anomaly_core.models import (
+    AuditLog,
+    Engagement,
+    EngagementMember,
+    EngagementMode,
+    Role,
+    RoleName,
+    User,
+)
 from sqlalchemy import select
 
 
@@ -19,10 +26,17 @@ async def test_enqueue_run_scope_warning_and_status(client, db_session, monkeypa
         pentester_role = Role(name=RoleName.pentester, description="pentester")
         db_session.add(pentester_role)
     await db_session.flush()
-    owner = User(email="owner@example.com", name="Owner", password_hash=hash_password("pass"), roles=[admin_role])
+    owner = User(
+        email="owner@example.com",
+        name="Owner",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
     db_session.add(owner)
     await db_session.flush()
-    p = User(email="p@example.com", name="P", password_hash=hash_password("pass"), roles=[pentester_role])
+    p = User(
+        email="p@example.com", name="P", password_hash=hash_password("pass"), roles=[pentester_role]
+    )
     db_session.add(p)
     await db_session.flush()
     eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
@@ -41,7 +55,9 @@ async def test_enqueue_run_scope_warning_and_status(client, db_session, monkeypa
     body = resp.json()
     assert "id" in body
 
-    status_resp = await client.get(f"/api/runs/{body['id']}", headers={"Authorization": f"Bearer {token}"})
+    status_resp = await client.get(
+        f"/api/runs/{body['id']}", headers={"Authorization": f"Bearer {token}"}
+    )
     assert status_resp.status_code == 200
     assert status_resp.json()["scope_warning"] is True
 

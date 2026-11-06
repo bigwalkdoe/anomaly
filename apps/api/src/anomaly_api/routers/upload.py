@@ -4,14 +4,13 @@ import os
 import uuid
 from io import BytesIO
 from typing import Annotated
-from uuid import UUID
-
-from minio import Minio
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from pydantic import BaseModel
 
 from anomaly_core.audit import AuditService
 from anomaly_core.models import Engagement, Evidence, EvidenceType
+from fastapi import APIRouter, Depends, File, UploadFile, status
+from minio import Minio
+from pydantic import BaseModel
+
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
@@ -35,12 +34,16 @@ def get_minio_client() -> Minio:
     )
 
 
-@router.post("/engagements/{engagement_id}", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/engagements/{engagement_id}",
+    response_model=UploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def upload_file(
     engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id"))],
-    file: UploadFile = File(...),
-    user: CurrentUser = None,
-    db: DbSession = None,
+    file: Annotated[UploadFile, File(...)],
+    user: CurrentUser,
+    db: DbSession,
 ) -> UploadResponse:
     client = get_minio_client()
     bucket_name = os.environ.get("MINIO_BUCKET", "anomaly-evidence")
@@ -65,7 +68,7 @@ async def upload_file(
     # Create evidence record
     ev = Evidence(
         run_id=None,
-        type=EvidenceType.file,
+        type=EvidenceType.log,
         storage_key=f"{bucket_name}/{object_name}",
         metadata={
             "filename": file.filename,
@@ -85,11 +88,12 @@ async def upload_file(
     )
     await db.commit()
 
+    endpoint = os.environ.get("MINIO_ENDPOINT", "localhost:9000")
     return UploadResponse(
         filename=file.filename,
         size=file_size,
         content_type=file.content_type or "application/octet-stream",
         bucket=bucket_name,
         object_name=object_name,
-        url=f"http://{os.environ.get('MINIO_ENDPOINT', 'localhost:9000')}/{bucket_name}/{object_name}",
+        url=f"http://{endpoint}/{bucket_name}/{object_name}",
     )

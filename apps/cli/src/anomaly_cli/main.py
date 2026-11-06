@@ -6,8 +6,8 @@ from pathlib import Path
 
 import httpx
 import typer
-from rich.table import Table
 from rich.console import Console
+from rich.table import Table
 
 from anomaly_cli.commands.dashboard import app as dashboard_app
 
@@ -21,7 +21,10 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 def load_config():
     if CONFIG_FILE.exists():
         return json.loads(CONFIG_FILE.read_text())
-    return {"api_url": os.environ.get("ANOMALY_API_URL", "http://localhost:8000"), "token": os.environ.get("ANOMALY_TOKEN")}
+    return {
+        "api_url": os.environ.get("ANOMALY_API_URL", "http://localhost:8000"),
+        "token": os.environ.get("ANOMALY_TOKEN"),
+    }
 
 
 def save_config(cfg: dict):
@@ -103,6 +106,7 @@ def findings_list(engagement_id: str):
 
 
 app.add_typer(dashboard_app, name="dashboard")
+
 
 @app.command()
 def version():
