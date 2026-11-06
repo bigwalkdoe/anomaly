@@ -14,9 +14,9 @@ class AIMessage:
 class AIResponse:
     content: str
     model: str
-    usage: dict[str, int] = None
+    usage: dict[str, int] | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.usage is None:
             self.usage = {"prompt_tokens": 0, "completion_tokens": 0}
 

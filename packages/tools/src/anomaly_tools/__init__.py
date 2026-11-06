@@ -1,4 +1,5 @@
 import contextlib
+from typing import cast
 
 from .base import FindingDraft, Tool, ToolResult, ToolSpec
 from .ffuf import FfufTool
@@ -25,7 +26,7 @@ def get_default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     for cls in [StubTool, NmapTool, HttpxTool, NucleiTool, FfufTool, SqlmapTool]:
         with contextlib.suppress(Exception):
-            reg.register(cls())
+            reg.register(cast(Tool, cls()))
     return reg
 
 
