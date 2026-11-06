@@ -1,17 +1,24 @@
 "use client";
-import { useState, useEffect } from "react";
 
-import { Sidebar } from "@/components/layout/layout";
-import { TopNav } from "@/components/layout/layout";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+import { Sidebar, TopNav } from "@/components/layout/layout";
 import { RequireAuth } from "@/components/RequireAuth";
 import { apiJson } from "@/lib/api";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { Plus, Target, Activity, AlertCircle, Trash2, Loader2 } from "@/components/ui/icons";
-import Link from "next/link";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { statusVariant } from "@/components/ui/status";
+import { Activity, AlertCircle, ArrowRight, Plus, Trash2 } from "@/components/ui/icons";
 
 interface Engagement {
   id: string;
@@ -21,38 +28,46 @@ interface Engagement {
   owner_id: string;
 }
 
-const MODE_COLORS: Record<string, string> = {
-  own_infra: "bg-blue-100 text-blue-800",
-  bug_bounty: "bg-yellow-100 text-yellow-800",
-  client: "bg-purple-100 text-purple-800",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-blue-100 text-blue-800",
-  active: "bg-green-100 text-green-800",
-  paused: "bg-yellow-100 text-yellow-800",
-  closed: "bg-gray-100 text-gray-800",
-};
+function StatusBadge({
+  domain,
+  value,
+}: {
+  domain: "engagement" | "engagement_mode";
+  value: string;
+}) {
+  const variant = statusVariant(domain, value);
+  return (
+    <Badge variant="outline" className={variant.className}>
+      {variant.label}
+    </Badge>
+  );
+}
 
 export default function EngagementsPage() {
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadEngagements = async () => {
+  const loadEngagements = async (manual = false) => {
+    if (manual) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
     try {
       const data = await apiJson<Engagement[]>("/api/engagements");
       setEngagements(data);
     } catch (err) {
       console.error("Failed to fetch engagements:", err);
+      setError(err instanceof Error ? err.message : "Failed to load engagements");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadEngagements();
+    void loadEngagements();
   }, []);
 
   const filteredEngagements = engagements.filter((e) =>
@@ -61,114 +76,144 @@ export default function EngagementsPage() {
 
   return (
     <RequireAuth>
-      <div className="min-h-screen bg-background">
-      <TopNav />
-      <Sidebar />
-      <main className="flex-1 md:ml-64 p-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl font-bold">Engagements</h1>
-            <p className="text-muted-foreground">
-              Manage penetration testing engagements
-            </p>
-          </div>
-          <Button asChild>
-            <a href="/engagements/new">
-              <Plus className="h-4 w-4 mr-2" />
-              New Engagement
-            </a>
-          </Button>
-        </div>
-
-        <div className="rounded-lg border border-input bg-card shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-input flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search engagements..."
-                className="flex-1 border-none bg-transparent focus:ring-0 text-sm text-foreground"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+      <div className="min-h-screen bg-background text-foreground">
+        <TopNav />
+        <Sidebar />
+        <main className="md:ml-64 p-4 pt-6 md:p-8">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Operations
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight">Engagements</h1>
+              <p className="text-sm text-muted-foreground">
+                Manage scoped penetration testing and security engagements.
+              </p>
             </div>
-            <div className="flex items-center gap-2">
+            <Button asChild>
+              <Link href="/engagements/new">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                New engagement
+              </Link>
+            </Button>
+          </div>
+
+          {error ? (
+            <div
+              role="alert"
+              className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            >
+              {error}
+            </div>
+          ) : null}
+
+          <div className="rounded-xl border border-border bg-card">
+            <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative w-full sm:max-w-sm">
+                <Activity
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  type="search"
+                  placeholder="Search engagements…"
+                  aria-label="Search engagements"
+                  className="pl-9"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
               <Button
-                onClick={loadEngagements}
-                disabled={refreshing}
+                type="button"
+                variant="outline"
                 size="sm"
+                onClick={() => void loadEngagements(true)}
+                loading={refreshing}
               >
-                <Loader2 className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
             </div>
-          </div>
 
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-            </div>
-          ) : filteredEngagements.length === 0 ? (
-            <div className="rounded-lg border border-input bg-card p-12 text-center">
-              <div className="flex flex-col items-center gap-3 py-8">
-                <AlertCircle className="h-12 w-12 text-muted-foreground" />
-                <h3 className="text-lg font-semibold">No engagements found</h3>
-                <p className="text-sm text-muted-foreground">
-                  {search ? "No engagements match your search." : "No engagements found."}
-                </p>
-                <Button asChild className="mt-4">
-                  <a href="/engagements/new">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Engagement
-                  </a>
-                </Button>
+            {loading ? (
+              <div className="flex h-64 items-center justify-center">
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  Loading engagements…
+                </div>
               </div>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-1/3">Name</TableHead>
-                  <TableHead className="w-1/6">Mode</TableHead>
-                  <TableHead className="w-1/6">Status</TableHead>
-                  <TableHead className="w-1/6 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredEngagements.map((eng) => (
-                  <TableRow key={eng.id} className="hover:bg-accent/50">
-                    <TableCell className="font-medium">
-                      <Link href={`/engagements/${eng.id}`} className="hover:text-primary">
-                        {eng.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={MODE_COLORS[eng.mode] || "bg-gray-100 text-gray-800"}>
-                        {eng.mode.replace("_", " ").toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={STATUS_COLORS[eng.status] || "bg-gray-100 text-gray-800"}>
-                        {eng.status.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Link href={`/engagements/${eng.id}`} className="p-2 text-muted-foreground hover:text-primary">
-                          <span className="sr-only">View</span>
-                        </Link>
-                        <button className="p-2 text-destructive hover:bg-destructive/50 hover:text-destructive transition-colors" title="Delete">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </TableCell>
+            ) : filteredEngagements.length === 0 ? (
+              <div className="p-8">
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/20 py-12 text-center">
+                  <AlertCircle className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">No engagements found</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {search
+                        ? "No engagements match your search."
+                        : "Create an engagement to define scope and start work."}
+                    </p>
+                  </div>
+                  {!search ? (
+                    <Button asChild size="sm" className="mt-2">
+                      <Link href="/engagements/new">Create engagement</Link>
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
-      </main>
+                </TableHeader>
+                <TableBody>
+                  {filteredEngagements.map((eng) => (
+                    <TableRow key={eng.id}>
+                      <TableCell className="font-medium">
+                        <Link
+                          href={`/engagements/${eng.id}`}
+                          className="text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                        >
+                          {eng.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge domain="engagement_mode" value={eng.mode} />
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge domain="engagement" value={eng.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button asChild variant="ghost" size="icon" className="h-8 w-8">
+                            <Link href={`/engagements/${eng.id}`} aria-label={`View ${eng.name}`}>
+                              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                            </Link>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            aria-label={`Delete ${eng.name}`}
+                            title="Delete"
+                            disabled
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </main>
       </div>
     </RequireAuth>
   );
