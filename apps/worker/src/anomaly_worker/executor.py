@@ -13,6 +13,7 @@ from anomaly_core.models import (
     Run,
     RunStatus,
     Scope,
+    Target,
 )
 from anomaly_core.runner import FakeRunner, RunSpec
 from anomaly_core.scope import check_scope
@@ -137,15 +138,25 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
 
     # Parse findings via tool wrapper when available; fallback to legacy stub_tool.
     finding_drafts = []
+    discovered: list[dict[str, Any]] = []
+    parsed = None
     if tool is not None:
         parse_input = stdout
         if run.tool == "stub" and not parse_input.strip() and targets:
             parse_input = f"stub reached {targets[0]}"
         try:
             parsed = tool.parse(parse_input)
-            finding_drafts = list(getattr(parsed, "findings", []) or [])
+        except TypeError:
+            try:
+                parsed = tool.parse(parse_input, targets, tool_params)
+            except Exception:
+                parsed = None
         except Exception:
-            finding_drafts = []
+            parsed = None
+        if parsed is not None:
+            pf = getattr(parsed, "parsed_findings", None)
+            finding_drafts = list(pf) if pf else list(getattr(parsed, "findings", []) or [])
+            discovered = list(getattr(parsed, "discovered_targets", []) or [])
     if not finding_drafts and run.tool == "stub":
         legacy = stub_tool(targets=targets)
         for f in getattr(legacy, "findings", []) or []:
@@ -156,6 +167,30 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         for f in getattr(legacy, "findings", []) or []:
             if isinstance(f, dict):
                 finding_drafts.append(f)
+
+    # Create discovered targets (idempotent)
+    for t in discovered:
+        value = str(t.get("value") or "").strip()
+        if not value:
+            continue
+        ttype = str(t.get("type") or "domain")
+        exists = await db.scalar(
+            select(Target).where(
+                Target.engagement_id == run.engagement_id,
+                Target.value == value,
+                Target.type == ttype,
+            )
+        )
+        if exists is None:
+            db.add(
+                Target(
+                    engagement_id=run.engagement_id,
+                    value=value,
+                    type=ttype,
+                    status=str(t.get("status") or "discovered"),
+                    discovered=bool(t.get("discovered", True)),
+                )
+            )
 
     for f in finding_drafts:
         if isinstance(f, dict):
@@ -171,7 +206,21 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             description = getattr(f, "description", "") or ""
             remediation = getattr(f, "remediation", None)
             cvss = getattr(f, "cvss", None)
-            fp = f"{run.id}:{title}:{description[:64]}"
+            meta = getattr(f, "metadata", {}) or {}
+            fp = (
+                getattr(f, "fingerprint", None)
+                or meta.get("fingerprint")
+                or f"{run.id}:{title}:{description[:64]}"
+            )
+        # Dedup/attach by (engagement_id, fingerprint)
+        existing = await db.scalar(
+            select(Finding).where(
+                Finding.engagement_id == run.engagement_id,
+                Finding.fingerprint == str(fp),
+            )
+        )
+        if existing is not None:
+            continue
         finding = Finding(
             engagement_id=run.engagement_id,
             title=title,
@@ -180,7 +229,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             remediation=remediation,
             cvss=cvss,
             reporter_id=run.user_id,
-            fingerprint=fp,
+            fingerprint=str(fp),
         )
         db.add(finding)
 

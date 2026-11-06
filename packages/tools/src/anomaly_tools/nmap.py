@@ -35,6 +35,49 @@ class NmapTool:
         return cmd
 
     def parse(self, stdout: str) -> ToolResult:
+        # Try XML first (nmap -oX)
+        try:
+            root = ET.fromstring(stdout)
+        except Exception:
+            root = None
+        if root is not None and root.tag in ("nmaprun", "nmap", "scan"):
+            findings = []
+            for host in root.findall("host"):
+                status = host.find("status")
+                if status is not None and status.get("state") != "up":
+                    continue
+                addr_el = host.find("address[@addrtype='ipv4']")
+                if addr_el is None:
+                    addr_el = host.find("address")
+                addr = addr_el.get("addr") if addr_el is not None else "unknown"
+                ports = host.find("ports")
+                if ports is None:
+                    continue
+                for port in ports.findall("port"):
+                    st = port.find("state")
+                    if st is None or st.get("state") != "open":
+                        continue
+                    portid = port.get("portid", "?")
+                    proto = port.get("protocol", "tcp")
+                    service = port.find("service")
+                    svc_name = service.get("name", "") if service is not None else ""
+                    title = f"Open {proto}/{portid} {svc_name} on {addr}".strip()
+                    findings.append(
+                        FindingDraft(
+                            title=title,
+                            severity="info",
+                            description=f"Service: {svc_name or 'unknown'}",
+                            metadata={"fingerprint": f"nmap:{addr}:{proto}:{portid}:{svc_name}"},
+                        )
+                    )
+            if not findings:
+                findings.append(
+                    FindingDraft(
+                        title="nmap scan completed", severity="info", description="Scan completed"
+                    )
+                )
+            return ToolResult(findings=findings, raw=stdout)
+
         findings = []
         for line in stdout.splitlines():
             line = line.strip()
