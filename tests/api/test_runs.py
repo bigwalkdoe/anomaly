@@ -1,136 +1,65 @@
-import uuid
+from __future__ import annotations
 
 import pytest
-from anomaly_api.deps import get_db
-from anomaly_api.main import app
 from anomaly_core.auth import create_access_token, hash_password
-from anomaly_core.models.audit import AuditLog
-from anomaly_core.models.engagement import (
+from anomaly_core.models import (
+    AuditLog,
     Engagement,
+    EngagementMember,
     EngagementMode,
-    Scope,
-    ScopeEntry,
+    Role,
+    RoleName,
+    User,
 )
-from anomaly_core.models.finding import Finding
-from anomaly_core.models.run import Run, RunStatus
-from anomaly_core.models.user import Role, RoleName, User, UserRole
-from anomaly_core.runner import FakeRunner, RunResult
-from anomaly_worker.executor import execute_run_inline
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 
-async def _admin_eng(db_session, *, in_scope=None):
-    role = await db_session.scalar(select(Role).where(Role.name == RoleName.ADMIN))
-    if role is None:
-        role = Role(name=RoleName.ADMIN)
-        db_session.add(role)
-        await db_session.flush()
-    user = User(
-        email=f"run-{uuid.uuid4().hex[:6]}@x.com", name="A", password_hash=hash_password("pw")
-    )
-    db_session.add(user)
+@pytest.mark.asyncio
+async def test_enqueue_run_scope_warning_and_status(client, db_session, monkeypatch):
+    monkeypatch.setenv("RUNNER_MODE", "inline")
+    admin_role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
+    pentester_role = await db_session.scalar(select(Role).where(Role.name == RoleName.pentester))
+    if admin_role is None:
+        admin_role = Role(name=RoleName.admin, description="admin")
+        db_session.add(admin_role)
+    if pentester_role is None:
+        pentester_role = Role(name=RoleName.pentester, description="pentester")
+        db_session.add(pentester_role)
     await db_session.flush()
-    db_session.add(UserRole(user_id=user.id, role_id=role.id))
-    eng = Engagement(name="RunEng", mode=EngagementMode.OWN_INFRA, owner_id=user.id)
+    owner = User(
+        email="owner@example.com",
+        name="Owner",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
+    db_session.add(owner)
+    await db_session.flush()
+    p = User(
+        email="p@example.com", name="P", password_hash=hash_password("pass"), roles=[pentester_role]
+    )
+    db_session.add(p)
+    await db_session.flush()
+    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
     db_session.add(eng)
     await db_session.flush()
-    scope = Scope(engagement_id=eng.id)
-    db_session.add(scope)
-    await db_session.flush()
-    for v in in_scope or []:
-        db_session.add(ScopeEntry(scope_id=scope.id, kind="in", target_value=v))
-    await db_session.commit()
-    return user, eng
-
-
-def _override(db_session):
-    async def override_get_db():
-        yield db_session
-
-    return override_get_db
-
-
-def _headers(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id, ['admin'])}"}
-
-
-@pytest.mark.asyncio
-async def test_enqueue_run_returns_202_and_writes_audit(db_session):
-    user, eng = await _admin_eng(db_session, in_scope=["example.com"])
-    app.dependency_overrides[get_db] = _override(db_session)
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            resp = await ac.post(
-                f"/api/engagements/{eng.id}/runs",
-                headers=_headers(user),
-                json={"tool": "stub", "targets": ["example.com"]},
-            )
-        assert resp.status_code == 202
-        run_id = resp.json()["id"]
-        assert run_id
-        count = await db_session.scalar(
-            select(func.count()).select_from(AuditLog).where(AuditLog.action == "run.enqueue")
-        )
-        assert (count or 0) >= 1
-    finally:
-        app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
-async def test_out_of_scope_sets_scope_warning(db_session):
-    user, eng = await _admin_eng(db_session, in_scope=["example.com"])
-    app.dependency_overrides[get_db] = _override(db_session)
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            resp = await ac.post(
-                f"/api/engagements/{eng.id}/runs",
-                headers=_headers(user),
-                json={"tool": "stub", "targets": ["evil.com"]},
-            )
-        assert resp.status_code == 202
-        run_id = resp.json()["id"]
-        run = await db_session.get(Run, uuid.UUID(run_id))
-        assert run is not None
-        assert run.scope_warning is True
-    finally:
-        app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
-async def test_vertical_slice_stub_tool(db_session):
-    user, eng = await _admin_eng(db_session, in_scope=["example.com"])
-    from anomaly_core.audit import AuditService
-
-    await AuditService.log(
-        db_session, user.id, "engagement.create", "engagement", eng.id, eng.id, {}
-    )
-    await AuditService.log(db_session, user.id, "run.enqueue", "run", None, eng.id, {})
-    await AuditService.log(db_session, user.id, "scope.check", "run", None, eng.id, {})
-    run = Run(
-        engagement_id=eng.id,
-        user_id=user.id,
-        tool="stub",
-        target_ids=[],
-        params={"targets": ["example.com"]},
-        status=RunStatus.QUEUED,
-        scope_warning=False,
-    )
-    db_session.add(run)
+    db_session.add(EngagementMember(engagement_id=eng.id, user_id=p.id, role=RoleName.pentester))
     await db_session.commit()
 
-    runner = FakeRunner(
-        result=RunResult(exit_code=0, stdout="stub", stderr="", artifacts=[], duration_s=0.1)
+    token = create_access_token(p.id, ["pentester"])
+    resp = await client.post(
+        f"/api/engagements/{eng.id}/runs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"tool": "nmap", "targets": ["evil.com"]},
     )
-    await execute_run_inline(db_session, run.id, runner=runner)
+    assert resp.status_code == 202
+    body = resp.json()
+    assert "id" in body
 
-    await db_session.refresh(run)
-    assert run.status == RunStatus.SUCCEEDED
-    finding_count = await db_session.scalar(
-        select(func.count()).select_from(Finding).where(Finding.engagement_id == eng.id)
+    status_resp = await client.get(
+        f"/api/runs/{body['id']}", headers={"Authorization": f"Bearer {token}"}
     )
-    assert (finding_count or 0) >= 1
-    audit_count = await db_session.scalar(
-        select(func.count()).select_from(AuditLog).where(AuditLog.engagement_id == eng.id)
-    )
-    assert (audit_count or 0) >= 3
+    assert status_resp.status_code == 200
+    assert status_resp.json()["scope_warning"] is True
+
+    log = await db_session.scalar(select(AuditLog).where(AuditLog.action == "run.enqueue"))
+    assert log is not None

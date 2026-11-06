@@ -1,29 +1,71 @@
-import enum
-import uuid
-from datetime import datetime
-from typing import Any
+from __future__ import annotations
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import JSON, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+import uuid
+from datetime import UTC, datetime
+from enum import Enum, StrEnum
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import (
+    UUID,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from anomaly_core.db import Base
+from anomaly_core.types import JSONType as JSON
+
+if TYPE_CHECKING:
+    from .engagement import Engagement, Target
+    from .run import Run
+    from .user import User
 
 
-class FindingSeverity(enum.StrEnum):
-    INFO = "info"
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
+def _enum_values(enum_cls: type[Enum]) -> list[str]:
+    return [member.value for member in enum_cls]
 
 
-class FindingStatus(enum.StrEnum):
-    NEW = "new"
-    TRIAGED = "triaged"
-    CONFIRMED = "confirmed"
-    FIXED = "fixed"
-    FALSE_POSITIVE = "false_positive"
+class FindingSeverity(StrEnum):
+    info = "info"
+    low = "low"
+    medium = "medium"
+    high = "high"
+    critical = "critical"
+
+
+class FindingStatus(StrEnum):
+    new = "new"
+    triaged = "triaged"
+    confirmed = "confirmed"
+    fixed = "fixed"
+    false_positive = "false_positive"
+
+
+class EvidenceType(StrEnum):
+    screenshot = "screenshot"
+    request_response = "request_response"
+    tool_output = "tool_output"
+    log = "log"
+
+
+class ReportStatus(StrEnum):
+    draft = "draft"
+    review = "review"
+    published = "published"
+
+
+class ReportFormat(StrEnum):
+    markdown = "markdown"
+    html = "html"
+    pdf = "pdf"
 
 
 class Finding(Base):
@@ -37,34 +79,51 @@ class Finding(Base):
         index=True,
     )
     target_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("targets.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("targets.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
     severity: Mapped[FindingSeverity] = mapped_column(
-        Enum(FindingSeverity, name="finding_severity"), nullable=False
-    )
-    status: Mapped[FindingStatus] = mapped_column(
-        Enum(FindingStatus, name="finding_status"),
+        SAEnum(FindingSeverity, values_callable=_enum_values),
+        default=FindingSeverity.medium,
         nullable=False,
-        default=FindingStatus.NEW,
         index=True,
     )
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[FindingStatus] = mapped_column(
+        SAEnum(FindingStatus, values_callable=_enum_values),
+        default=FindingStatus.new,
+        nullable=False,
+        index=True,
+    )
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     remediation: Mapped[str | None] = mapped_column(Text, nullable=True)
     cvss: Mapped[float | None] = mapped_column(Float, nullable=True)
-    reporter_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    reporter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     ai_drafted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     reviewer_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    fingerprint: Mapped[str | None] = mapped_column(String(500), nullable=True, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    engagement: Mapped[Engagement] = relationship(
+        "Engagement", back_populates="findings", lazy="selectin"
+    )
+    target: Mapped[Target | None] = relationship("Target", lazy="selectin")
+    evidence: Mapped[list[Evidence]] = relationship(
+        "Evidence", back_populates="finding", cascade="all, delete-orphan", lazy="selectin"
     )
 
 
@@ -81,15 +140,41 @@ class Evidence(Base):
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    type: Mapped[str] = mapped_column(String(100), nullable=False)
-    storage_key: Mapped[str] = mapped_column(String(1000), nullable=False)
-    meta: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
+    type: Mapped[EvidenceType] = mapped_column(
+        SAEnum(EvidenceType, values_callable=_enum_values), nullable=False, index=True
+    )
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, default=dict, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
+
+    finding: Mapped[Finding | None] = relationship(
+        "Finding", back_populates="evidence", lazy="selectin"
+    )
+    run: Mapped[Run | None] = relationship("Run", back_populates="evidence", lazy="selectin")
+
+
+def _evidence_metadata_get(self: Evidence) -> dict[str, Any]:
+    return self.metadata_
+
+
+def _evidence_metadata_set(self: Evidence, value: dict[str, Any]) -> None:
+    self.metadata_ = value
+
+
+Evidence.metadata = property(_evidence_metadata_get, _evidence_metadata_set)  # type: ignore[assignment]
 
 
 class Report(Base):
@@ -102,20 +187,49 @@ class Report(Base):
         nullable=False,
         index=True,
     )
-    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
-    format: Mapped[str] = mapped_column(String(50), nullable=False, default="markdown")
-    content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    author_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    status: Mapped[ReportStatus] = mapped_column(
+        SAEnum(ReportStatus, values_callable=_enum_values),
+        default=ReportStatus.draft,
+        nullable=False,
+        index=True,
+    )
+    format: Mapped[ReportFormat] = mapped_column(
+        SAEnum(ReportFormat, values_callable=_enum_values),
+        default=ReportFormat.markdown,
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     approver_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
+
+    engagement: Mapped[Engagement] = relationship("Engagement", lazy="selectin")
+    author: Mapped[User] = relationship("User", foreign_keys=[author_id], lazy="selectin")
+    approver: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approver_id], lazy="selectin"
+    )
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    color: Mapped[str] = mapped_column(String(20), default="#666")

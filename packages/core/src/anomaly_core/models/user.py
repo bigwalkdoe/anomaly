@@ -1,50 +1,97 @@
-import enum
-import uuid
-from datetime import datetime
+from __future__ import annotations
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, func
-from sqlalchemy.dialects.postgresql import UUID
+import uuid
+from datetime import UTC, datetime
+from enum import Enum, StrEnum
+
+from sqlalchemy import (
+    UUID,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    Table,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from anomaly_core.db import Base
 
 
-class RoleName(enum.StrEnum):
-    ADMIN = "admin"
-    PENTESTER = "pentester"
-    CLIENT_VIEWER = "client_viewer"
+def _enum_values(enum_cls: type[Enum]) -> list[str]:
+    return [member.value for member in enum_cls]
+
+
+class RoleName(StrEnum):
+    admin = "admin"
+    pentester = "pentester"
+    client_viewer = "client_viewer"
+
+
+user_roles = Table(
+    "user_roles",
+    Base.metadata,
+    Column(
+        "user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "role_id", UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    ),
+)
+
+role_permissions = Table(
+    "role_permissions",
+    Base.metadata,
+    Column(
+        "role_id", UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "permission_id",
+        UUID(as_uuid=True),
+        ForeignKey("permissions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+    ),
+)
 
 
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
-    roles: Mapped[list["UserRole"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
-
-
-class Permission(Base):
-    __tablename__ = "permissions"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    roles: Mapped[list[Role]] = relationship(
+        "Role", secondary=user_roles, back_populates="users", lazy="selectin"
     )
 
 
@@ -53,36 +100,58 @@ class Role(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[RoleName] = mapped_column(
-        Enum(RoleName, name="role_name"), unique=True, nullable=False
+        SAEnum(RoleName, values_callable=_enum_values), unique=True, nullable=False, index=True
     )
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
-    permissions: Mapped[list["RolePermission"]] = relationship(
-        back_populates="role", cascade="all, delete-orphan"
+    permissions: Mapped[list[Permission]] = relationship(
+        "Permission", secondary=role_permissions, back_populates="roles", lazy="selectin"
+    )
+    users: Mapped[list[User]] = relationship(
+        "User", secondary=user_roles, back_populates="roles", lazy="selectin"
     )
 
 
-class RolePermission(Base):
-    __tablename__ = "role_permissions"
+class Permission(Base):
+    __tablename__ = "permissions"
 
-    role_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
-    permission_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("permissions.id", ondelete="CASCADE"), primary_key=True
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
-    role: Mapped[Role] = relationship(back_populates="permissions")
-    permission: Mapped[Permission] = relationship()
+    roles: Mapped[list[Role]] = relationship(
+        "Role", secondary=role_permissions, back_populates="permissions", lazy="selectin"
+    )
 
 
 class UserRole(Base):
-    __tablename__ = "user_roles"
+    """Explicit association object for User<->Role (kept for direct querying)."""
+
+    __tablename__ = "user_role"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
@@ -90,22 +159,30 @@ class UserRole(Base):
     role_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
+    )
 
-    user: Mapped[User] = relationship(back_populates="roles")
-    role: Mapped[Role] = relationship()
+    user: Mapped[User] = relationship("User", lazy="selectin")
+    role: Mapped[Role] = relationship("Role", lazy="selectin")
 
 
-class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
+class APIKey(Base):
+    __tablename__ = "api_keys"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    jti_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
-    family_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
-    revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    scopes: Mapped[str] = mapped_column(String(500), default="*")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

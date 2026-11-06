@@ -1,43 +1,48 @@
-from typing import Annotated, Any
+from __future__ import annotations
+
+from typing import Annotated
 from uuid import UUID
 
 from anomaly_core.audit import get_audit_log
-from anomaly_core.models.user import User
-from anomaly_core.rbac import can_access_engagement, is_admin
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from anomaly_core.models import Engagement, RoleName
+from anomaly_core.rbac import engagement_accessible, has_role
+from fastapi import APIRouter, HTTPException, Query
 
-from anomaly_api.deps import get_current_user, get_db
+from anomaly_api.deps import CurrentUser, DbSession
 
-router = APIRouter(prefix="/api/audit", tags=["audit"])
+router = APIRouter(prefix="/api", tags=["audit"])
 
 
-@router.get("")
+@router.get("/audit")
 async def list_audit(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    engagement_id: UUID | None = Query(default=None),
-    limit: int = Query(default=100, le=500),
-    offset: int = Query(default=0, ge=0),
-) -> list[dict[str, Any]]:
-    if (
-        engagement_id
-        and not await is_admin(current_user, db)
-        and not await can_access_engagement(current_user, engagement_id, db)
-    ):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    if engagement_id is None and not await is_admin(current_user, db):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    rows = await get_audit_log(db, engagement_id=engagement_id, limit=limit, offset=offset)
+    user: CurrentUser,
+    db: DbSession,
+    engagement_id: Annotated[UUID | None, Query()] = None,
+    limit: Annotated[int, Query()] = 100,
+    offset: int = 0,
+):
+    if engagement_id is not None:
+        engagement = await db.get(Engagement, engagement_id)
+        if engagement is None:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        if has_role(user, RoleName.admin):
+            pass
+        elif not await engagement_accessible(db, user, engagement):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        logs = await get_audit_log(db, engagement_id=engagement_id, limit=limit, offset=offset)
+    else:
+        if not has_role(user, RoleName.admin):
+            raise HTTPException(status_code=403, detail="Forbidden")
+        logs = await get_audit_log(db, engagement_id=None, limit=limit, offset=offset)
     return [
         {
-            "id": str(r.id),
-            "action": r.action,
-            "resource_type": r.resource_type,
-            "resource_id": str(r.resource_id) if r.resource_id else None,
-            "engagement_id": str(r.engagement_id) if r.engagement_id else None,
-            "metadata": r.meta,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "id": str(log.id),
+            "action": log.action,
+            "resource_type": log.resource_type,
+            "resource_id": str(log.resource_id) if log.resource_id else None,
+            "engagement_id": str(log.engagement_id) if log.engagement_id else None,
+            "metadata": log.metadata,
+            "created_at": log.created_at.isoformat(),
         }
-        for r in rows
+        for log in logs
     ]

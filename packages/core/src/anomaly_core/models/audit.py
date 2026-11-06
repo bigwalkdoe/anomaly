@@ -1,32 +1,63 @@
-import uuid
-from datetime import datetime
-from typing import Any
+from __future__ import annotations
 
-from sqlalchemy import DateTime, ForeignKey, String, func
-from sqlalchemy.dialects.postgresql import JSON, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+import uuid
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import (
+    UUID,
+    DateTime,
+    ForeignKey,
+    String,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from anomaly_core.db import Base
+from anomaly_core.types import JSONType as JSON
+
+if TYPE_CHECKING:
+    from .engagement import Engagement
+    from .user import User
 
 
 class AuditLog(Base):
-    __tablename__ = "audit_log"
+    __tablename__ = "audit_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    action: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    resource_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    action: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    resource_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    resource_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     engagement_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("engagements.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
-    meta: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSON, default=dict, nullable=False
     )
-    # Immutable: no updated_at.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
+    )
+
+    actor: Mapped[User | None] = relationship("User", lazy="selectin")
+    engagement: Mapped[Engagement | None] = relationship("Engagement", lazy="selectin")
+
+
+def _audit_metadata_get(self: AuditLog) -> dict[str, Any]:
+    return self.metadata_
+
+
+def _audit_metadata_set(self: AuditLog, value: dict[str, Any]) -> None:
+    self.metadata_ = value
+
+
+AuditLog.metadata = property(_audit_metadata_get, _audit_metadata_set)  # type: ignore[assignment]

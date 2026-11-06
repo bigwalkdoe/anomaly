@@ -1,153 +1,94 @@
+from __future__ import annotations
+
 import pytest
-from anomaly_api.deps import get_db
-from anomaly_api.main import app
-from httpx import ASGITransport, AsyncClient
+
+REGISTER = {
+    "email": "admin@example.com",
+    "name": "Admin",
+    "password": "correct-horse-battery",
+}
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
-@pytest.mark.asyncio
-async def test_register_creates_user_and_returns_tokens(db_session):
-    async def override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            resp = await ac.post(
-                "/api/auth/register",
-                json={"email": "a@example.com", "name": "A", "password": "secret123"},
-            )
-        assert resp.status_code in (200, 201)
-        data = resp.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
-    finally:
-        app.dependency_overrides.clear()
+async def _register(client, **overrides):
+    payload = {**REGISTER, **overrides}
+    response = await client.post("/api/auth/register", json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
 
 
 @pytest.mark.asyncio
-async def test_login_correct_creds_returns_tokens(db_session):
-    async def override_get_db():
-        yield db_session
+async def test_register_creates_user_and_returns_tokens(client):
+    body = await _register(client)
+    assert body["token_type"] == "bearer"
+    assert body["access_token"]
+    assert body["refresh_token"]
 
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            await ac.post(
-                "/api/auth/register",
-                json={"email": "b@example.com", "name": "B", "password": "secret123"},
-            )
-            resp = await ac.post(
-                "/api/auth/login", json={"email": "b@example.com", "password": "secret123"}
-            )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "access_token" in data and "refresh_token" in data
-    finally:
-        app.dependency_overrides.clear()
+    me = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"}
+    )
+    assert me.status_code == 200
+    assert me.json()["email"] == REGISTER["email"]
+    assert me.json()["roles"] == ["admin"]
 
 
 @pytest.mark.asyncio
-async def test_login_wrong_creds_returns_401(db_session):
-    async def override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            await ac.post(
-                "/api/auth/register",
-                json={"email": "c@example.com", "name": "C", "password": "secret123"},
-            )
-            resp = await ac.post(
-                "/api/auth/login", json={"email": "c@example.com", "password": "wrong"}
-            )
-        assert resp.status_code == 401
-    finally:
-        app.dependency_overrides.clear()
+async def test_login_with_correct_credentials(client):
+    await _register(client)
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": REGISTER["email"], "password": REGISTER["password"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["access_token"]
+    assert response.json()["refresh_token"]
 
 
 @pytest.mark.asyncio
-async def test_me_with_access_token(db_session):
-    async def override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            reg = await ac.post(
-                "/api/auth/register",
-                json={"email": "d@example.com", "name": "D", "password": "secret123"},
-            )
-            token = reg.json()["access_token"]
-            resp = await ac.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert resp.status_code == 200
-        assert resp.json()["email"] == "d@example.com"
-    finally:
-        app.dependency_overrides.clear()
+async def test_login_with_wrong_password_returns_401(client):
+    await _register(client)
+    response = await client.post(
+        "/api/auth/login",
+        json={"email": REGISTER["email"], "password": "wrong-password"},
+    )
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_me_without_token_returns_401(db_session):
-    async def override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            resp = await ac.get("/api/auth/me")
-        assert resp.status_code == 401
-    finally:
-        app.dependency_overrides.clear()
+async def test_me_without_token_returns_401(client):
+    response = await client.get("/api/auth/me")
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_refresh_rotates_and_rejects_old(db_session):
-    async def override_get_db():
-        yield db_session
+async def test_refresh_rotates_and_rejects_old_token(client):
+    body = await _register(client)
+    old_refresh = body["refresh_token"]
 
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            reg = await ac.post(
-                "/api/auth/register",
-                json={"email": "e@example.com", "name": "E", "password": "secret123"},
-            )
-            old_refresh = reg.json()["refresh_token"]
-            refreshed = await ac.post("/api/auth/refresh", json={"refresh_token": old_refresh})
-            assert refreshed.status_code == 200
-            assert refreshed.json()["refresh_token"] != old_refresh
-            replay = await ac.post("/api/auth/refresh", json={"refresh_token": old_refresh})
-        assert replay.status_code == 401
-    finally:
-        app.dependency_overrides.clear()
+    rotated = await client.post("/api/auth/refresh", json={"refresh_token": old_refresh})
+    assert rotated.status_code == 200
+    assert rotated.json()["refresh_token"] != old_refresh
+
+    reused = await client.post("/api/auth/refresh", json={"refresh_token": old_refresh})
+    assert reused.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_logout_revokes_refresh_token(db_session):
-    async def override_get_db():
-        yield db_session
+async def test_logout_revokes_refresh_token(client):
+    body = await _register(client)
+    refresh_token = body["refresh_token"]
 
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            reg = await ac.post(
-                "/api/auth/register",
-                json={"email": "f@example.com", "name": "F", "password": "secret123"},
-            )
-            tokens = reg.json()
-            await ac.post(
-                "/api/auth/logout",
-                json={"refresh_token": tokens["refresh_token"]},
-                headers={"Authorization": f"Bearer {tokens['access_token']}"},
-            )
-            replay = await ac.post(
-                "/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
-            )
-        assert replay.status_code == 401
-    finally:
-        app.dependency_overrides.clear()
+    logout = await client.post("/api/auth/logout", json={"refresh_token": refresh_token})
+    assert logout.status_code == 204
+
+    response = await client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_second_registration_requires_admin(client):
+    await _register(client)
+    response = await client.post(
+        "/api/auth/register",
+        json={"email": "other@example.com", "name": "Other", "password": "another-password"},
+    )
+    assert response.status_code == 403

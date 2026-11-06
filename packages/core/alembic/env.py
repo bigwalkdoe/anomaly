@@ -1,22 +1,21 @@
 import asyncio
 from logging.config import fileConfig
 
+import anomaly_core.models  # noqa: F401  (populate Base.metadata)
 from alembic import context
-
-# Import models so autogenerate can detect them.
-from anomaly_core import models  # noqa: F401
 from anomaly_core.config import get_settings
 from anomaly_core.db import Base
 from sqlalchemy import pool
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 config = context.config
 
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
 
@@ -28,15 +27,13 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        compare_type=True,
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
 
@@ -47,10 +44,8 @@ async def run_migrations_online() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
-
     await connectable.dispose()
 
 

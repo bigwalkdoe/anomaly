@@ -1,238 +1,200 @@
 from __future__ import annotations
 
-import uuid
-from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 from anomaly_core.audit import AuditService
-from anomaly_core.models.engagement import Scope, ScopeEntry, Target
-from anomaly_core.models.finding import Evidence, Finding, FindingSeverity, FindingStatus
-from anomaly_core.models.run import Run, RunStatus
+from anomaly_core.models import (
+    Engagement,
+    Evidence,
+    EvidenceType,
+    Finding,
+    FindingSeverity,
+    Run,
+    RunStatus,
+    Scope,
+)
 from anomaly_core.runner import FakeRunner, RunSpec
 from anomaly_core.scope import check_scope
 from anomaly_tools import ToolSpec as AnomalyToolSpec
 from anomaly_tools import get_default_registry
-from anomaly_tools.registry import TOOL_DEFS
+from anomaly_tools.stub import stub_tool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+RISKY_PARAM_KEYS = {"allow_risky_options", "allow_risky", "risk", "level"}
 
 
-def _severity(value: Any) -> FindingSeverity:
+def _targets_from_run(run: Run) -> list[str]:
+    params = run.params if isinstance(run.params, dict) else {}
+    targets = params.get("targets")
+    if isinstance(targets, list):
+        return [str(t) for t in targets]
+    if isinstance(targets, str) and targets:
+        return [targets]
+    return []
+
+
+def _tool_params(run: Run) -> dict[str, Any]:
+    params = run.params if isinstance(run.params, dict) else {}
+    return {k: v for k, v in params.items() if k != "targets"}
+
+
+def _severity(value: str) -> FindingSeverity:
     try:
         return FindingSeverity(str(value))
-    except ValueError:
-        return FindingSeverity.INFO
+    except Exception:
+        return FindingSeverity.info
 
 
-def _finding_to_dict(f: Any) -> dict[str, Any]:
-    if isinstance(f, dict):
-        return f
-    fp_meta = None
-    if hasattr(f, "metadata") and isinstance(getattr(f, "metadata", None), dict):
-        fp_meta = f.metadata.get("fingerprint")
-    return {
-        "title": getattr(f, "title", "Finding"),
-        "severity": getattr(f, "severity", "info"),
-        "description": getattr(f, "description", None),
-        "remediation": getattr(f, "remediation", None),
-        "cvss": getattr(f, "cvss", None),
-        "fingerprint": getattr(f, "fingerprint", None) or fp_meta,
-        "metadata": getattr(f, "metadata", {}) or {},
-    }
-
-
-async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | None = None) -> Run:
+async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run:
     run = await db.get(Run, run_id)
     if run is None:
-        raise ValueError("run not found")
+        raise ValueError("Run not found")
+    run.status = RunStatus.running
+    await db.flush()
 
-    scope = await db.scalar(select(Scope).where(Scope.engagement_id == run.engagement_id))
-    entries = []
-    if scope:
-        rows = await db.scalars(select(ScopeEntry).where(ScopeEntry.scope_id == scope.id))
-        entries = list(rows)
-    targets = run.params.get("targets", []) if isinstance(run.params, dict) else []
-    if isinstance(run.params, dict):
-        tool_params = {k: v for k, v in run.params.items() if k != "targets"}
-    else:
-        tool_params = {}
-    check = check_scope(entries, targets)
-    if check.has_warning and not run.scope_warning:
+    # Load engagement + scope for scope checks (foundation contract).
+    try:
+        res = await db.execute(
+            select(Engagement)
+            .options(selectinload(Engagement.scope).selectinload(Scope.entries))
+            .where(Engagement.id == run.engagement_id)
+        )
+        engagement = res.scalar_one()
+    except Exception:
+        engagement = await db.get(Engagement, run.engagement_id)
+
+    targets = _targets_from_run(run)
+    result = check_scope(engagement, targets)
+    if result.has_warning:
         run.scope_warning = True
         await AuditService.log(
-            db,
-            run.user_id,
-            "scope.warning",
-            "run",
-            run.id,
-            run.engagement_id,
-            {"out_of_scope": check.out_of_scope},
+            actor_id=run.user_id,
+            action="scope.warning",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            metadata={"out_of_scope": result.out_of_scope},
+            db=db,
         )
 
-    # Log explicit risky option usage (sqlmap safety / audit).
+    tool_params = _tool_params(run)
+    # Log when risky options were explicitly requested (sqlmap safety).
     if tool_params.get("allow_risky_options"):
         await AuditService.log(
-            db,
-            run.user_id,
-            "tool.risky_options",
-            "run",
-            run.id,
-            run.engagement_id,
-            {"tool": run.tool, "params": tool_params},
+            actor_id=run.user_id,
+            action="tool.risky_options",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            metadata={"tool": run.tool, "params": tool_params},
+            db=db,
         )
-
-    run.status = RunStatus.RUNNING
-    run.started_at = datetime.now(UTC)
-    await db.flush()
 
     if runner is None:
         runner = FakeRunner()
 
     registry = get_default_registry()
     tool = registry.get(run.tool)
-    tool_def = TOOL_DEFS.get(run.tool)
-    image = tool_def.image if tool_def else "anomaly-runner:dev"
-    timeout_s = tool_def.default_timeout_s if tool_def else 300
 
+    tool_image = f"anomaly-tools-{run.tool}:dev" if run.tool != "stub" else "anomaly-runner:dev"
     command: list[str] | None = None
     if tool is not None:
+        spec = AnomalyToolSpec(
+            targets=targets,
+            params=tool_params,
+            engagement_id=str(run.engagement_id),
+        )
         try:
-            command = tool.build_cmd(
-                AnomalyToolSpec(
-                    targets=targets,
-                    params=tool_params,
-                    engagement_id=str(run.engagement_id),
-                )
-            )
+            command = tool.build_cmd(spec)
         except Exception:
             command = None
 
-    spec = RunSpec(
+    run_spec = RunSpec(
         tool=run.tool,
-        image=image,
+        image=tool_image,
         target_values=targets,
         params=tool_params,
-        env={},
-        timeout_s=timeout_s,
-        network="anomaly-net",
         command=command,
     )
-    result = await runner.run(spec)
+    runner_result = await runner.run(run_spec)
 
-    db.add(
-        Evidence(
-            run_id=run.id,
-            type="tool_output",
-            storage_key=f"inline://runs/{run.id}/stdout",
-            meta={"stdout": result.stdout, "stderr": result.stderr, "exit_code": result.exit_code},
-        )
+    stdout = getattr(runner_result, "stdout", "") or ""
+    stderr = getattr(runner_result, "stderr", "") or ""
+    ev = Evidence(
+        run_id=run.id,
+        type=EvidenceType.log,
+        storage_key=f"logs/{run.id}.txt",
+        metadata={
+            "stdout": stdout,
+            "stderr": stderr,
+            "exit_code": getattr(runner_result, "exit_code", 0),
+        },
     )
+    db.add(ev)
 
-    parsed: list[dict[str, Any]] = []
-    discovered: list[dict[str, Any]] = []
-    tr = None
-
-    # Prefer registry tool parse when available.
+    # Parse findings via tool wrapper when available; fallback to legacy stub_tool.
+    finding_drafts = []
     if tool is not None:
-        parse_input = result.stdout or ""
+        parse_input = stdout
         if run.tool == "stub" and not parse_input.strip() and targets:
             parse_input = f"stub reached {targets[0]}"
         try:
-            tr = tool.parse(parse_input, targets, tool_params)
-        except TypeError:
-            tr = tool.parse(parse_input)
+            parsed = tool.parse(parse_input)
+            finding_drafts = list(getattr(parsed, "findings", []) or [])
         except Exception:
-            tr = None
-    # Compat fallback to TOOL_DEFS
-    if tr is None and tool_def and tool_def.parse_output and result.stdout:
-        tr = tool_def.parse_output(
-            result.stdout, result.stderr, result.exit_code, targets, run.params
-        )
-    elif tr is None and tool_def and tool_def.run_direct:
-        tr = await tool_def.run_direct(targets, run.params)
-    elif tr is None:
-        from anomaly_tools.stub import TOOL_REGISTRY
+            finding_drafts = []
+    if not finding_drafts and run.tool == "stub":
+        legacy = stub_tool(targets=targets)
+        for f in getattr(legacy, "findings", []) or []:
+            if isinstance(f, dict):
+                finding_drafts.append(f)
+    if not finding_drafts and tool is None:
+        legacy = stub_tool(targets=targets)
+        for f in getattr(legacy, "findings", []) or []:
+            if isinstance(f, dict):
+                finding_drafts.append(f)
 
-        tool_fn = TOOL_REGISTRY.get(run.tool)
-        if tool_fn is not None:
-            tr = await tool_fn(targets, run.params)
-
-    if tr is not None:
-        raw_findings = getattr(tr, "parsed_findings", None)
-        if raw_findings is None:
-            raw_findings = getattr(tr, "findings", []) or []
-        parsed = [_finding_to_dict(f) for f in (raw_findings or [])]
-        discovered = getattr(tr, "discovered_targets", []) or []
-
-    # Preserve feat behavior: auto-create discovered targets (idempotent).
-    for t in discovered:
-        value = str(t.get("value") or "").strip()
-        if not value:
-            continue
-        ttype = str(t.get("type") or "domain")
-        exists = await db.scalar(
-            select(Target).where(
-                Target.engagement_id == run.engagement_id,
-                Target.value == value,
-                Target.type == ttype,
-            )
+    for f in finding_drafts:
+        if isinstance(f, dict):
+            title = f.get("title", "Stub finding: target reachable")
+            severity = _severity(f.get("severity", "info"))
+            description = f.get("description", "") or ""
+            remediation = f.get("remediation")
+            cvss = f.get("cvss")
+            fp = f.get("fingerprint") or f"{run.id}:{title}:{description[:64]}"
+        else:
+            title = getattr(f, "title", "Finding")
+            severity = _severity(getattr(f, "severity", "info"))
+            description = getattr(f, "description", "") or ""
+            remediation = getattr(f, "remediation", None)
+            cvss = getattr(f, "cvss", None)
+            fp = f"{run.id}:{title}:{description[:64]}"
+        finding = Finding(
+            engagement_id=run.engagement_id,
+            title=title,
+            severity=severity,
+            description=description,
+            remediation=remediation,
+            cvss=cvss,
+            reporter_id=run.user_id,
+            fingerprint=fp,
         )
-        if exists is None:
-            db.add(
-                Target(
-                    engagement_id=run.engagement_id,
-                    value=value,
-                    type=ttype,
-                    status=str(t.get("status") or "discovered"),
-                    discovered=bool(t.get("discovered", True)),
-                )
-            )
+        db.add(finding)
 
-    # Preserve feat behavior: dedup/attach by (engagement_id, fingerprint).
-    for f in parsed:
-        sev = f.get("severity", "info")
-        severity = _severity(sev)
-        fingerprint = str(
-            f.get("fingerprint") or f"{run.engagement_id}:{run.tool}:{f.get('title', '')}"
-        )
-        existing = await db.scalar(
-            select(Finding).where(
-                Finding.engagement_id == run.engagement_id,
-                Finding.fingerprint == fingerprint,
-            )
-        )
-        if existing is not None:
-            # Attach: keep existing finding; optionally refresh metadata.
-            existing.updated_at = datetime.now(UTC)
-            continue
-        db.add(
-            Finding(
-                engagement_id=run.engagement_id,
-                title=f.get("title", "Finding"),
-                severity=severity,
-                status=FindingStatus.NEW,
-                description=f.get("description"),
-                remediation=f.get("remediation"),
-                cvss=f.get("cvss"),
-                reporter_id=run.user_id,
-                fingerprint=fingerprint,
-            )
-        )
-
-    run.status = RunStatus.SUCCEEDED if result.exit_code == 0 else RunStatus.FAILED
-    run.finished_at = datetime.now(UTC)
+    exit_code = getattr(runner_result, "exit_code", 0)
+    run.status = RunStatus.succeeded if exit_code == 0 else RunStatus.failed
     await AuditService.log(
-        db,
-        run.user_id,
-        "run.complete",
-        "run",
-        run.id,
-        run.engagement_id,
-        {"status": run.status.value},
+        actor_id=run.user_id,
+        action="run.complete",
+        resource_type="run",
+        resource_id=run.id,
+        engagement_id=run.engagement_id,
+        metadata={"status": run.status.value, "tool": run.tool},
+        db=db,
     )
     await db.commit()
+    await db.refresh(run)
     return run
-
-
-# Compat alias
-execute_run = execute_run_inline

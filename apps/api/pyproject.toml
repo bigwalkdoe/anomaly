@@ -1,9 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "anomaly-api"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["anomaly-core", "fastapi>=0.111", "uvicorn[standard]>=0.30", "python-multipart>=0.0.9"]
+dependencies = ["anomaly-core", "fastapi>=0.111", "uvicorn[standard]>=0.30", "python-multipart>=0.0.9", "prometheus-client>=0.20"]
 
-[tool.uv.sources]
-anomaly-core = { workspace = true }
-
+[tool.setuptools.packages.find]
+where = ["src"]
