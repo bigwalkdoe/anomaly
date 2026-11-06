@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/AuthContext";
 import {
   Activity,
   ChevronRight,
@@ -32,7 +33,14 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+
+  const handleSignOut = () => {
+    logout();
+    router.replace("/login");
+  };
 
   return (
     <aside
@@ -51,6 +59,7 @@ export function Sidebar() {
             onClick={() => setCollapsed(!collapsed)}
             className="p-1 text-muted-foreground hover:text-primary"
             aria-label="Toggle sidebar"
+            type="button"
           >
             <ChevronRight
               className={cn("h-5 w-5 transition-transform duration-300", collapsed && "rotate-180")}
@@ -78,13 +87,14 @@ export function Sidebar() {
           })}
         </nav>
         <div className="border-t border-input p-3">
-          <Link
-            href="/login"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
           >
             <LogOut className="h-5 w-5 shrink-0" />
             <span>Sign out</span>
-          </Link>
+          </button>
         </div>
       </div>
     </aside>
@@ -92,6 +102,14 @@ export function Sidebar() {
 }
 
 export function TopNav({ user }: { user?: { name?: string; email?: string } }) {
+  const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleSignOut = () => {
+    logout();
+    router.replace("/login");
+  };
+
   return (
     <div className="sticky top-0 z-40 flex h-12 items-center justify-between px-4 border-b border-input bg-background">
       <div className="flex items-center gap-4">
@@ -104,14 +122,15 @@ export function TopNav({ user }: { user?: { name?: string; email?: string } }) {
         {user?.name && (
           <span className="hidden md:inline text-sm text-muted-foreground">{user.name}</span>
         )}
-        <Link
-          href="/login"
+        <button
+          type="button"
+          onClick={handleSignOut}
           className="hidden md:flex items-center gap-2 rounded-md px-3 py-1 text-sm font-medium text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
         >
           <LogOut className="h-4 w-4" />
           Sign out
-        </Link>
-        <button className="p-1 text-muted-foreground hover:text-primary" aria-label="Activity">
+        </button>
+        <button className="p-1 text-muted-foreground hover:text-primary" aria-label="Activity" type="button">
           <Clock className="h-5 w-5" />
         </button>
       </div>

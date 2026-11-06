@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
-import { useAuth } from "@/components/AuthContext";
+import { RequireAuth } from "@/components/RequireAuth";
 import { apiJson } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,6 @@ interface Run {
 }
 
 export default function RunsPage() {
-  const { token } = useAuth();
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,8 +40,9 @@ export default function RunsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <TopNav user={{ name: "Admin" }} />
+    <RequireAuth>
+      <div className="min-h-screen bg-background">
+      <TopNav />
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -119,6 +119,7 @@ export default function RunsPage() {
           )}
         </div>
       </main>
-    </div>
+      </div>
+    </RequireAuth>
   );
 }
