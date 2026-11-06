@@ -19,6 +19,11 @@ class ToolResult:
     findings: list[FindingDraft] = field(default_factory=list)
     evidence: list[dict[str, Any]] = field(default_factory=list)
     raw: str = ""
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int = 0
+    parsed_findings: list[dict[str, Any]] = field(default_factory=list)
+    discovered_targets: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
