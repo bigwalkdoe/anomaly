@@ -1,53 +1,17 @@
 "use client";
-import { useState, useEffect } from "react";
 
-import { TopNav } from "@/components/layout/layout";
-import { Sidebar } from "@/components/layout/layout";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+
+import { Sidebar, TopNav } from "@/components/layout/layout";
 import { RequireAuth } from "@/components/RequireAuth";
 import { apiJson } from "@/lib/api";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Plus,
-  Play,
-  ArrowRight,
-  Target,
-  Activity,
-  AlertCircle,
-  Trash2,
-} from "@/components/ui/icons";
-
-const MODE_COLORS: Record<string, string> = {
-  own_infra: "bg-blue-100 text-blue-800",
-  bug_bounty: "bg-yellow-100 text-yellow-800",
-  client: "bg-purple-100 text-purple-800",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  active: "bg-green-100 text-green-800",
-  closed: "bg-gray-100 text-gray-800",
-  draft: "bg-blue-100 text-blue-800",
-  paused: "bg-yellow-100 text-yellow-800",
-};
-
-const RUN_STATUS_COLORS: Record<string, string> = {
-  queued: "bg-yellow-100 text-yellow-800",
-  running: "bg-blue-100 text-blue-800",
-  succeeded: "bg-green-100 text-green-800",
-  failed: "bg-red-100 text-red-800",
-  cancelled: "bg-gray-100 text-gray-800",
-};
+import { severityVariant } from "@/components/ui/severity";
+import { statusVariant } from "@/components/ui/status";
+import { AlertCircle, ArrowLeft, Play, Trash2 } from "@/components/ui/icons";
 
 interface Engagement {
   id: string;
@@ -75,6 +39,30 @@ interface Run {
   scope_warning: boolean;
 }
 
+function SemanticBadge({
+  domain,
+  value,
+}: {
+  domain: "engagement" | "engagement_mode" | "run" | "finding";
+  value: string;
+}) {
+  const variant = statusVariant(domain, value);
+  return (
+    <Badge variant="outline" className={variant.className}>
+      {variant.label}
+    </Badge>
+  );
+}
+
+function SeverityBadge({ value }: { value: string }) {
+  const variant = severityVariant(value);
+  return (
+    <Badge variant="outline" className={variant.className}>
+      {variant.label}
+    </Badge>
+  );
+}
+
 function EngagementDetailContent() {
   const params = useParams();
   const router = useRouter();
@@ -83,29 +71,34 @@ function EngagementDetailContent() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [creatingRun, setCreatingRun] = useState(false);
 
   const fetchData = async () => {
+    setError(null);
     try {
-      const [eng, findings, runs] = await Promise.all([
+      const [eng, findingsData, runsData] = await Promise.all([
         apiJson<Engagement>(`/api/engagements/${engagementId}`),
         apiJson<Finding[]>(`/api/engagements/${engagementId}/findings`),
         apiJson<Run[]>(`/api/engagements/${engagementId}/runs`),
       ]);
       setEngagement(eng);
-      setFindings(findings);
-      setRuns(runs);
+      setFindings(findingsData);
+      setRuns(runsData);
     } catch (err) {
       console.error("Failed to fetch engagement data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load engagement");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [engagementId]);
 
   const handleCreateRun = async () => {
+    setCreatingRun(true);
     try {
       await apiJson(`/api/engagements/${engagementId}/runs`, {
         method: "POST",
@@ -118,6 +111,8 @@ function EngagementDetailContent() {
       }, 1000);
     } catch (err) {
       console.error("Failed to create run:", err);
+      setError(err instanceof Error ? err.message : "Failed to create run");
+      setCreatingRun(false);
     }
   };
 
@@ -128,150 +123,189 @@ function EngagementDetailContent() {
       router.push("/engagements");
     } catch (err) {
       console.error("Failed to delete engagement:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete engagement");
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          Loading engagement…
+        </div>
       </div>
     );
   }
 
   if (!engagement) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold">Engagement not found</h2>
-        </div>
+      <div className="min-h-screen bg-background text-foreground">
+        <TopNav />
+        <Sidebar />
+        <main className="md:ml-64 p-4 pt-6 md:p-8">
+          <div className="mx-auto max-w-lg rounded-xl border border-border bg-card p-8 text-center">
+            <AlertCircle className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" />
+            <h1 className="mt-4 text-lg font-semibold">Engagement not found</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {error || "The requested engagement could not be loaded."}
+            </p>
+            <Button asChild variant="outline" className="mt-5">
+              <Link href="/engagements">Back to engagements</Link>
+            </Button>
+          </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground">
       <TopNav />
       <Sidebar />
-      <main className="flex-1 ml-64 p-8">
+      <main className="md:ml-64 p-4 pt-6 md:p-8">
         <header className="mb-8">
-          <Link href="/engagements" className="text-sm text-muted-foreground hover:text-primary">
-            ← Back to Engagements
+          <Link
+            href="/engagements"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to engagements
           </Link>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-4">
-            <div>
-              <h1 className="text-2xl font-bold">{engagement.name}</h1>
-              <p className="text-muted-foreground">
-                {engagement.mode.replace("_", " ").toUpperCase()} • {engagement.status.toUpperCase()}
-              </p>
+          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <SemanticBadge domain="engagement_mode" value={engagement.mode} />
+                <SemanticBadge domain="engagement" value={engagement.status} />
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight">{engagement.name}</h1>
+              <p className="text-sm text-muted-foreground font-mono">{engagement.id}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleDelete}
-                className="text-sm text-destructive hover:bg-destructive/10 rounded-md px-3 py-1.5 transition-colors"
-              >
-                Delete Engagement
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
               <Button
-                onClick={handleCreateRun}
-                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                type="button"
+                variant="outline"
+                onClick={handleDelete}
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               >
-                <Play className="h-4 w-4" /> New Run
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                Delete
+              </Button>
+              <Button type="button" onClick={handleCreateRun} loading={creatingRun}>
+                <Play className="h-4 w-4" aria-hidden="true" />
+                New run
               </Button>
             </div>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <section className="rounded-lg border border-input bg-card p-6 shadow-sm">
-              <h2 className="text-lg font-semibold mb-4">Findings ({findings.length})</h2>
-              <div className="space-y-3">
+        {error ? (
+          <div
+            role="alert"
+            className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="space-y-6 xl:col-span-2">
+            <section className="rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-5 py-4">
+                <h2 className="text-sm font-semibold">Findings</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {findings.length} recorded finding{findings.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              <div className="divide-y divide-border">
                 {findings.length > 0 ? (
                   findings.map((f) => (
-                    <div key={f.id} className="p-3 rounded-md border border-input bg-background">
-                      <div className="flex justify-between items-start mb-1">
-                        <Link href={`/findings/${f.id}`} className="font-medium hover:text-primary">
-                          {f.title}
-                        </Link>
-                        <Badge className={MODE_COLORS[f.severity.toLowerCase()] || "bg-gray-100 text-gray-800"}>
-                          {f.severity.toUpperCase()}
-                        </Badge>
+                    <div key={f.id} className="px-5 py-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <Link
+                            href={`/findings/${f.id}`}
+                            className="font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                          >
+                            {f.title}
+                          </Link>
+                          <p className="text-sm text-muted-foreground">{f.description}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <SeverityBadge value={f.severity} />
+                          <SemanticBadge domain="finding" value={f.status} />
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground">{f.description}</p>
-                      <span className="text-xs font-medium text-muted-foreground">{f.status}</span>
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No findings yet.</p>
+                  <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+                    No findings recorded for this engagement yet.
                   </div>
                 )}
               </div>
             </section>
 
-            <section className="rounded-lg border border-input bg-card p-6 shadow-sm">
-              <h2 className="text-lg font-semibold mb-4">Runs ({runs.length})</h2>
-              <div className="space-y-3">
+            <section className="rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-5 py-4">
+                <h2 className="text-sm font-semibold">Runs</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {runs.length} execution{runs.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              <div className="divide-y divide-border">
                 {runs.length > 0 ? (
                   runs.map((run) => (
-                    <div key={run.id} className="p-3 rounded-md border border-input bg-background">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-medium">{run.tool}</span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RUN_STATUS_COLORS[run.status.toLowerCase()] || "bg-gray-100 text-gray-800"}`}>
-                          {run.status.toUpperCase()}
-                        </span>
+                    <div key={run.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">{run.tool}</p>
+                        {run.scope_warning ? (
+                          <p className="flex items-center gap-1.5 text-xs text-status-warning-foreground">
+                            <span
+                              className="inline-block h-1.5 w-1.5 rounded-full bg-status-warning-foreground"
+                              aria-hidden="true"
+                            />
+                            Scope warning recorded
+                          </p>
+                        ) : null}
                       </div>
-                      {run.scope_warning && (
-                        <span className="text-xs text-orange-600 flex items-center gap-1">
-                          ⚠️ Scope warning
-                        </span>
-                      )}
+                      <SemanticBadge domain="run" value={run.status} />
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">No runs yet.</p>
+                  <div className="px-5 py-10 text-center text-sm text-muted-foreground">
+                    No runs recorded for this engagement yet.
                   </div>
                 )}
               </div>
             </section>
           </div>
 
-          <div className="lg:col-span-1">
-            <div className="rounded-lg border border-input bg-card p-6 shadow-sm sticky top-24">
-              <h3 className="text-lg font-semibold mb-4">Engagement Details</h3>
-              <dl className="space-y-4 text-sm">
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">ID</dt>
-                  <dd className="font-mono text-xs">{engagement.id}</dd>
-                </div>
-                <div className="flex justify-between">
+          <aside className="xl:col-span-1">
+            <div className="rounded-xl border border-border bg-card p-5 xl:sticky xl:top-24">
+              <h3 className="text-sm font-semibold">Details</h3>
+              <dl className="mt-4 space-y-4 text-sm">
+                <div className="flex items-start justify-between gap-4">
                   <dt className="text-muted-foreground">Mode</dt>
-                  <Badge className={MODE_COLORS[engagement.mode] || "bg-gray-100 text-gray-800"}>
-                    {engagement.mode.replace("_", " ").toUpperCase()}
-                  </Badge>
+                  <dd><SemanticBadge domain="engagement_mode" value={engagement.mode} /></dd>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <dt className="text-muted-foreground">Status</dt>
-                  <Badge className={STATUS_COLORS[engagement.status.toLowerCase()] || "bg-gray-100 text-gray-800"}>
-                    {engagement.status.toUpperCase()}
-                  </Badge>
+                  <dd><SemanticBadge domain="engagement" value={engagement.status} /></dd>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <dt className="text-muted-foreground">Owner</dt>
-                  <dd className="font-mono text-xs">{engagement.owner_id.slice(0, 8)}...</dd>
+                  <dd className="font-mono text-xs text-foreground">{engagement.owner_id}</dd>
                 </div>
-                {engagement.client_name && (
-                  <div className="flex justify-between">
+                {engagement.client_name ? (
+                  <div className="flex items-start justify-between gap-4">
                     <dt className="text-muted-foreground">Client</dt>
-                    <dd>{engagement.client_name}</dd>
+                    <dd className="text-foreground">{engagement.client_name}</dd>
                   </div>
-                )}
+                ) : null}
               </dl>
             </div>
-          </div>
+          </aside>
         </div>
       </main>
     </div>
@@ -285,4 +319,3 @@ export default function EngagementDetailPage() {
     </RequireAuth>
   );
 }
-
