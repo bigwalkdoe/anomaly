@@ -3,6 +3,7 @@ import { apiJson } from "@/lib/api";
 
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
+import { RequireAuth } from "@/components/RequireAuth";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,8 +35,9 @@ export default function SchedulesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <TopNav user={{ name: "Admin" }} />
+    <RequireAuth>
+      <div className="min-h-screen bg-background">
+      <TopNav />
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -65,6 +67,7 @@ export default function SchedulesPage() {
           </div>
         </div>
       </main>
-    </div>
+      </div>
+    </RequireAuth>
   );
 }

@@ -50,7 +50,7 @@ services:
 
   anomaly-api:
     build:
-      context: ..
+      context: .
       dockerfile: infra/api/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://anomaly:${POSTGRES_PASSWORD:-anomaly}@postgres:5432/anomaly
@@ -78,9 +78,25 @@ services:
       - postgres_password
       - minio_root_password
 
+  anomaly-web:
+    build:
+      context: .
+      dockerfile: infra/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    networks:
+      - anomaly-net
+
   anomaly-worker:
     build:
-      context: ..
+      context: .
       dockerfile: infra/worker/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://anomaly:${POSTGRES_PASSWORD:-anomaly}@postgres:5432/anomaly
