@@ -50,14 +50,22 @@ def parse_nuclei_output(
         template_id = item.get("template-id") or item.get("templateID") or "nuclei"
         host = item.get("host") or (targets[0] if targets else "")
         matched = item.get("matched-at") or item.get("matched") or host
-        findings.append({
-            "title": info.get("name") or template_id, "severity": sev,
-            "description": info.get("description"),
-            "remediation": info.get("remediation"),
-            "fingerprint": f"nuclei:{template_id}:{matched}",
-            "metadata": {"template_id": template_id, "host": host, "matched_at": matched},
-        })
+        findings.append(
+            {
+                "title": info.get("name") or template_id,
+                "severity": sev,
+                "description": info.get("description"),
+                "remediation": info.get("remediation"),
+                "fingerprint": f"nuclei:{template_id}:{matched}",
+                "metadata": {"template_id": template_id, "host": host, "matched_at": matched},
+            }
+        )
     return SimpleNamespace(
-        stdout=output or "", stderr="", exit_code=0,
-        parsed_findings=findings, raw=output or "", findings=[], discovered_targets=[],
+        stdout=output or "",
+        stderr="",
+        exit_code=0,
+        parsed_findings=findings,
+        raw=output or "",
+        findings=[],
+        discovered_targets=[],
     )
