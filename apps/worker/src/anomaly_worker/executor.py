@@ -10,9 +10,31 @@ from anomaly_core.models.finding import Evidence, Finding, FindingSeverity, Find
 from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.runner import FakeRunner, RunSpec
 from anomaly_core.scope import check_scope
+from anomaly_tools import ToolSpec as AnomalyToolSpec, get_default_registry
 from anomaly_tools.registry import TOOL_DEFS
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def _severity(value: Any) -> FindingSeverity:
+    try:
+        return FindingSeverity(str(value))
+    except ValueError:
+        return FindingSeverity.INFO
+
+
+def _finding_to_dict(f: Any) -> dict[str, Any]:
+    if isinstance(f, dict):
+        return f
+    return {
+        "title": getattr(f, "title", "Finding"),
+        "severity": getattr(f, "severity", "info"),
+        "description": getattr(f, "description", None),
+        "remediation": getattr(f, "remediation", None),
+        "cvss": getattr(f, "cvss", None),
+        "fingerprint": getattr(f, "fingerprint", None) or (f.metadata.get("fingerprint") if hasattr(f, "metadata") and isinstance(getattr(f, "metadata"), dict) else None),
+        "metadata": getattr(f, "metadata", {}) or {},
+    }
 
 
 async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | None = None) -> Run:
@@ -26,6 +48,7 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
         rows = await db.scalars(select(ScopeEntry).where(ScopeEntry.scope_id == scope.id))
         entries = list(rows)
     targets = run.params.get("targets", []) if isinstance(run.params, dict) else []
+    tool_params = {k: v for k, v in (run.params or {}).items() if k != "targets"} if isinstance(run.params, dict) else {}
     check = check_scope(entries, targets)
     if check.has_warning and not run.scope_warning:
         run.scope_warning = True
@@ -39,6 +62,18 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
             {"out_of_scope": check.out_of_scope},
         )
 
+    # Log explicit risky option usage (sqlmap safety / audit).
+    if tool_params.get("allow_risky_options"):
+        await AuditService.log(
+            db,
+            run.user_id,
+            "tool.risky_options",
+            "run",
+            run.id,
+            run.engagement_id,
+            {"tool": run.tool, "params": tool_params},
+        )
+
     run.status = RunStatus.RUNNING
     run.started_at = datetime.now(UTC)
     await db.flush()
@@ -46,18 +81,30 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
     if runner is None:
         runner = FakeRunner()
 
+    registry = get_default_registry()
+    tool = registry.get(run.tool)
     tool_def = TOOL_DEFS.get(run.tool)
     image = tool_def.image if tool_def else "anomaly-runner:dev"
     timeout_s = tool_def.default_timeout_s if tool_def else 300
+
+    command: list[str] | None = None
+    if tool is not None:
+        try:
+            command = tool.build_cmd(
+                AnomalyToolSpec(targets=targets, params=tool_params, engagement_id=str(run.engagement_id))
+            )
+        except Exception:
+            command = None
 
     spec = RunSpec(
         tool=run.tool,
         image=image,
         target_values=targets,
-        params=run.params or {},
+        params=tool_params,
         env={},
         timeout_s=timeout_s,
         network="anomaly-net",
+        command=command,
     )
     result = await runner.run(spec)
 
@@ -73,22 +120,40 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
     parsed: list[dict[str, Any]] = []
     discovered: list[dict[str, Any]] = []
     tr = None
-    if tool_def and tool_def.parse_output and result.stdout:
+
+    # Prefer registry tool parse when available.
+    if tool is not None:
+        parse_input = result.stdout or ""
+        if run.tool == "stub" and not parse_input.strip() and targets:
+            parse_input = f"stub reached {targets[0]}"
+        try:
+            tr = tool.parse(parse_input, targets, tool_params)
+        except TypeError:
+            tr = tool.parse(parse_input)
+        except Exception:
+            tr = None
+    # Compat fallback to TOOL_DEFS
+    if tr is None and tool_def and tool_def.parse_output and result.stdout:
         tr = tool_def.parse_output(
             result.stdout, result.stderr, result.exit_code, targets, run.params
         )
-    elif tool_def and tool_def.run_direct:
+    elif tr is None and tool_def and tool_def.run_direct:
         tr = await tool_def.run_direct(targets, run.params)
-    else:
+    elif tr is None:
         from anomaly_tools.stub import TOOL_REGISTRY
 
         tool_fn = TOOL_REGISTRY.get(run.tool)
         if tool_fn is not None:
             tr = await tool_fn(targets, run.params)
+
     if tr is not None:
-        parsed = tr.parsed_findings
+        raw_findings = getattr(tr, "parsed_findings", None)
+        if raw_findings is None:
+            raw_findings = getattr(tr, "findings", []) or []
+        parsed = [_finding_to_dict(f) for f in (raw_findings or [])]
         discovered = getattr(tr, "discovered_targets", []) or []
 
+    # Preserve feat behavior: auto-create discovered targets (idempotent).
     for t in discovered:
         value = str(t.get("value") or "").strip()
         if not value:
@@ -112,12 +177,10 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
                 )
             )
 
+    # Preserve feat behavior: dedup/attach by (engagement_id, fingerprint).
     for f in parsed:
         sev = f.get("severity", "info")
-        try:
-            severity = FindingSeverity(sev)
-        except ValueError:
-            severity = FindingSeverity.INFO
+        severity = _severity(sev)
         fingerprint = str(
             f.get("fingerprint") or f"{run.engagement_id}:{run.tool}:{f.get('title', '')}"
         )
@@ -139,6 +202,7 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
                 status=FindingStatus.NEW,
                 description=f.get("description"),
                 remediation=f.get("remediation"),
+                cvss=f.get("cvss"),
                 reporter_id=run.user_id,
                 fingerprint=fingerprint,
             )
@@ -157,3 +221,7 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
     )
     await db.commit()
     return run
+
+
+# Compat alias
+execute_run = execute_run_inline
