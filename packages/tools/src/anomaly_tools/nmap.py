@@ -25,7 +25,9 @@ class NmapTool:
         cmd.extend(spec.targets)
         return cmd
 
-    def parse(self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None) -> ToolResult:
+    def parse(
+        self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
+    ) -> ToolResult:
         return parse_nmap_xml(stdout, targets, params)
 
 
@@ -36,7 +38,9 @@ def parse_nmap_xml(
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        return ToolResult(stdout=xml_text, stderr=str(exc), exit_code=1, parsed_findings=[], raw=xml_text)
+        return ToolResult(
+            stdout=xml_text, stderr=str(exc), exit_code=1, parsed_findings=[], raw=xml_text
+        )
 
     for host in root.findall("host"):
         status = host.find("status")
@@ -86,4 +90,3 @@ def parse_nmap_xml(
 async def run_nmap(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:
     # In-process placeholder; real execution happens in container via runner + parse_nmap_xml.
     return ToolResult(stdout="", exit_code=0, parsed_findings=[])
-

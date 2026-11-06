@@ -19,7 +19,9 @@ class FfufTool:
             cmd.extend(["-u", spec.targets[0]])
         return cmd
 
-    def parse(self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None) -> ToolResult:
+    def parse(
+        self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
+    ) -> ToolResult:
         return parse_ffuf_json(stdout, targets, params)
 
 
@@ -30,8 +32,10 @@ def parse_ffuf_json(
     try:
         data = json.loads(output)
     except json.JSONDecodeError as exc:
-        return ToolResult(stdout=output, stderr=str(exc), exit_code=1, parsed_findings=[], raw=output)
-    for r in (data.get("results") or []):
+        return ToolResult(
+            stdout=output, stderr=str(exc), exit_code=1, parsed_findings=[], raw=output
+        )
+    for r in data.get("results") or []:
         url = r.get("url") or r.get("input", {}).get("FUZZ") or "unknown"
         status = r.get("status")
         length = r.get("length")
@@ -57,4 +61,3 @@ def parse_ffuf_json(
 
 async def run_ffuf(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:
     return ToolResult(stdout="", exit_code=0, parsed_findings=[])
-

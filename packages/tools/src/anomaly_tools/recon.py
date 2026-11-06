@@ -25,7 +25,9 @@ class ReconTool:
             cmd.extend(["-u", t])
         return cmd
 
-    def parse(self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None) -> ToolResult:
+    def parse(
+        self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
+    ) -> ToolResult:
         return parse_recon_output(stdout, targets, params)
 
 
@@ -64,7 +66,13 @@ def parse_recon_output(
                 },
             }
         )
-    return ToolResult(stdout=output or "", exit_code=0, parsed_findings=[], discovered_targets=discovered, raw=output or "")
+    return ToolResult(
+        stdout=output or "",
+        exit_code=0,
+        parsed_findings=[],
+        discovered_targets=discovered,
+        raw=output or "",
+    )
 
 
 async def run_recon(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:

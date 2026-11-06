@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from anomaly_tools.stub import ToolResult
+from anomaly_tools.base import ToolResult
 
 
 def parse_passthrough(

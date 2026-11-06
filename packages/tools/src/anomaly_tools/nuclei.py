@@ -32,7 +32,9 @@ class NucleiTool:
             cmd.extend(["-u", t])
         return cmd
 
-    def parse(self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None) -> ToolResult:
+    def parse(
+        self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
+    ) -> ToolResult:
         return parse_nuclei_output(stdout, targets, params)
 
 
@@ -69,4 +71,3 @@ def parse_nuclei_output(
 async def run_nuclei(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:
     # In-process placeholder; real execution happens in container via runner + parse_nuclei_output.
     return ToolResult(stdout="", exit_code=0, parsed_findings=[])
-

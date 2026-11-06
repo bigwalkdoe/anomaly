@@ -10,7 +10,8 @@ from anomaly_core.models.finding import Evidence, Finding, FindingSeverity, Find
 from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.runner import FakeRunner, RunSpec
 from anomaly_core.scope import check_scope
-from anomaly_tools import ToolSpec as AnomalyToolSpec, get_default_registry
+from anomaly_tools import ToolSpec as AnomalyToolSpec
+from anomaly_tools import get_default_registry
 from anomaly_tools.registry import TOOL_DEFS
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,13 +27,16 @@ def _severity(value: Any) -> FindingSeverity:
 def _finding_to_dict(f: Any) -> dict[str, Any]:
     if isinstance(f, dict):
         return f
+    fp_meta = None
+    if hasattr(f, "metadata") and isinstance(getattr(f, "metadata", None), dict):
+        fp_meta = f.metadata.get("fingerprint")
     return {
         "title": getattr(f, "title", "Finding"),
         "severity": getattr(f, "severity", "info"),
         "description": getattr(f, "description", None),
         "remediation": getattr(f, "remediation", None),
         "cvss": getattr(f, "cvss", None),
-        "fingerprint": getattr(f, "fingerprint", None) or (f.metadata.get("fingerprint") if hasattr(f, "metadata") and isinstance(getattr(f, "metadata"), dict) else None),
+        "fingerprint": getattr(f, "fingerprint", None) or fp_meta,
         "metadata": getattr(f, "metadata", {}) or {},
     }
 
@@ -48,7 +52,10 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
         rows = await db.scalars(select(ScopeEntry).where(ScopeEntry.scope_id == scope.id))
         entries = list(rows)
     targets = run.params.get("targets", []) if isinstance(run.params, dict) else []
-    tool_params = {k: v for k, v in (run.params or {}).items() if k != "targets"} if isinstance(run.params, dict) else {}
+    if isinstance(run.params, dict):
+        tool_params = {k: v for k, v in run.params.items() if k != "targets"}
+    else:
+        tool_params = {}
     check = check_scope(entries, targets)
     if check.has_warning and not run.scope_warning:
         run.scope_warning = True
@@ -91,7 +98,11 @@ async def execute_run_inline(db: AsyncSession, run_id: uuid.UUID, runner: Any | 
     if tool is not None:
         try:
             command = tool.build_cmd(
-                AnomalyToolSpec(targets=targets, params=tool_params, engagement_id=str(run.engagement_id))
+                AnomalyToolSpec(
+                    targets=targets,
+                    params=tool_params,
+                    engagement_id=str(run.engagement_id),
+                )
             )
         except Exception:
             command = None

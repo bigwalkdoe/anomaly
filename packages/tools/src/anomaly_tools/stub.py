@@ -4,6 +4,8 @@ from typing import Any
 
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
 
+__all__ = ["FindingDraft", "StubTool", "ToolResult", "ToolSpec", "run_stub", "TOOL_REGISTRY"]
+
 
 class StubTool:
     name = "stub"
@@ -13,13 +15,22 @@ class StubTool:
         target = spec.targets[0] if spec.targets else ""
         return ["stub", target] if target else ["stub"]
 
-    def parse(self, stdout: str) -> ToolResult:
+    def parse(
+        self,
+        stdout: str,
+        targets: list[str] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> ToolResult:
         target = stdout.replace("stub reached", "").strip() if stdout else ""
+        if not target and targets:
+            target = targets[0]
         desc = f"Stub finding for {target}" if target else "Stub tool executed successfully."
         return ToolResult(
             findings=[
                 FindingDraft(
-                    title=f"Stub finding: target reachable ({target})" if target else "Stub finding: target reachable",
+                    title=f"Stub finding: target reachable ({target})"
+                    if target
+                    else "Stub finding: target reachable",
                     severity="info",
                     description=desc,
                 )

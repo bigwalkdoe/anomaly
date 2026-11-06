@@ -24,6 +24,7 @@ class ToolRegistry:
 
 # ---- Compat layer for feat/tool-packs-phase2 executor (TOOL_DEFS/ToolDefinition) ----
 
+
 @dataclass
 class ToolDefinition:
     name: str
@@ -34,11 +35,18 @@ class ToolDefinition:
 
 
 def _wrap_parse(fn: Callable[..., Any]) -> Callable[..., Any]:
-    def _p(stdout: str, stderr: str, exit_code: int, targets: list[str], params: dict[str, Any] | None):
+    def _p(
+        stdout: str,
+        stderr: str,
+        exit_code: int,
+        targets: list[str],
+        params: dict[str, Any] | None,
+    ) -> Any:
         try:
             return fn(stdout or "", targets, params)
         except TypeError:
             return fn(stdout or "")
+
     return _p
 
 
@@ -117,8 +125,14 @@ def _build_tool_defs() -> dict[str, ToolDefinition]:
 
         st = SqlmapTool()
 
-        def _sqlmap_parse(stdout, stderr, exit_code, targets, params):
-            return st.parse(stdout or "")
+        def _sqlmap_parse(
+            stdout: str,
+            stderr: str,
+            exit_code: int,
+            targets: list[str],
+            params: dict[str, Any] | None,
+        ) -> Any:
+            return st.parse(stdout or "", targets, params)
 
         defs["sqlmap"] = ToolDefinition(
             name="sqlmap",

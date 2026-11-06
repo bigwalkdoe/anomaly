@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
-from anomaly_tools.base import ToolResult, ToolSpec
 from anomaly_tools.recon import ReconTool, parse_recon_output, run_recon
 
 

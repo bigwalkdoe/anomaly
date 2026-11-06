@@ -22,7 +22,9 @@ class SqlmapTool:
             cmd.extend(["-u", spec.targets[0]])
         return cmd
 
-    def parse(self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None) -> ToolResult:
+    def parse(
+        self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
+    ) -> ToolResult:
         findings = []
         low = (stdout or "").lower()
         if "sqlmap identified" in low or "vulnerable" in low:
@@ -35,7 +37,9 @@ class SqlmapTool:
             )
         if not findings:
             findings.append(
-                FindingDraft(title="sqlmap completed", severity="info", description="Scan completed")
+                FindingDraft(
+                    title="sqlmap completed", severity="info", description="Scan completed"
+                )
             )
         return ToolResult(findings=findings, raw=stdout or "", stdout=stdout or "", exit_code=0)
 

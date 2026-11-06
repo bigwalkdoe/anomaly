@@ -74,5 +74,10 @@ class Tool(Protocol):
     def build_cmd(self, spec: ToolSpec) -> list[str]:  # pragma: no cover
         ...
 
-    def parse(self, stdout: str) -> ToolResult:  # pragma: no cover
+    def parse(
+        self,
+        stdout: str,
+        targets: list[str] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> ToolResult:  # pragma: no cover
         ...
