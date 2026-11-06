@@ -43,26 +43,41 @@ def parse_ffuf_json(
         data = json.loads(output)
     except json.JSONDecodeError as exc:
         return SimpleNamespace(
-            stdout=output, stderr=str(exc), exit_code=1,
-            parsed_findings=[], raw=output, findings=[], discovered_targets=[],
+            stdout=output,
+            stderr=str(exc),
+            exit_code=1,
+            parsed_findings=[],
+            raw=output,
+            findings=[],
+            discovered_targets=[],
         )
-    for r in (data.get("results") or []):
+    for r in data.get("results") or []:
         url = r.get("url") or r.get("input", {}).get("FUZZ") or "unknown"
         status = r.get("status")
         length = r.get("length")
         severity = "info"
         path = str(url).lower()
-        if status == 200 and any(x in path for x in ["/admin", "/login", "/.git", "/config", "/api"]):
+        if status == 200 and any(
+            x in path for x in ["/admin", "/login", "/.git", "/config", "/api"]
+        ):
             severity = "low"
         elif status in (401, 403) and any(x in path for x in ["/.git", "/admin", "/backup"]):
             severity = "info"
-        findings.append({
-            "title": f"ffuf found {url} (HTTP {status})", "severity": severity,
-            "description": f"status={status} length={length}",
-            "fingerprint": f"ffuf:{url}:{status}",
-            "metadata": {"url": url, "status": status, "length": length},
-        })
+        findings.append(
+            {
+                "title": f"ffuf found {url} (HTTP {status})",
+                "severity": severity,
+                "description": f"status={status} length={length}",
+                "fingerprint": f"ffuf:{url}:{status}",
+                "metadata": {"url": url, "status": status, "length": length},
+            }
+        )
     return SimpleNamespace(
-        stdout=output, stderr="", exit_code=0,
-        parsed_findings=findings, raw=output, findings=[], discovered_targets=[],
+        stdout=output,
+        stderr="",
+        exit_code=0,
+        parsed_findings=findings,
+        raw=output,
+        findings=[],
+        discovered_targets=[],
     )
