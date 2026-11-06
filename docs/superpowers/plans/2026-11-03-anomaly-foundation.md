@@ -249,6 +249,7 @@ git add -A && git commit -m "chore: scaffold anomaly monorepo"
 import pytest
 from anomaly_core.db import Base, engine
 
+
 @pytest.mark.asyncio
 async def test_engine_connects():
     async with engine.begin() as conn:
@@ -266,6 +267,7 @@ Expected: ModuleNotFoundError.
 ```python
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     database_url: str
@@ -280,7 +282,9 @@ class Settings(BaseSettings):
     runner_image: str = "anomaly-runner:dev"
     runner_network: str = "anomaly-net"
 
+
 _settings: Settings | None = None
+
 
 def get_settings() -> Settings:
     global _settings

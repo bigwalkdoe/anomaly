@@ -30,7 +30,7 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: |
-          uv pip install --system -e packages/core -e packages/tools -e apps/api -e apps/worker mypy pytest types-requests
+          uv pip install --system -e packages/core -e packages/tools -e apps/api -e apps/worker mypy pytest types-requests types-passlib
       - name: Mypy
         run: mypy packages apps
 
@@ -46,7 +46,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready -U anomaly -d anomaly
+          --health-cmd "pg_isready -U anomaly -d anomaly"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7
