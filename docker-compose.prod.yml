@@ -50,7 +50,7 @@ services:
 
   anomaly-api:
     build:
-      context: ..
+      context: .
       dockerfile: infra/api/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://anomaly:${POSTGRES_PASSWORD:***REMOVED***
@@ -96,7 +96,7 @@ services:
 
   anomaly-worker:
     build:
-      context: ..
+      context: .
       dockerfile: infra/worker/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://anomaly:${POSTGRES_PASSWORD:***REMOVED***

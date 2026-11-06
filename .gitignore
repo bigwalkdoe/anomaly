@@ -28,3 +28,4 @@ env/
 node_modules/
 *.tsbuildinfo
 .env
+secrets/
