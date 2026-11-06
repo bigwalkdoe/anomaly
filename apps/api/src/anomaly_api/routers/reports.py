@@ -15,10 +15,10 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.get("/engagements/{engagement_id}/generate")
 async def generate_report(
     engagement_id: UUID,
+    user: CurrentUser,
+    db: DbSession,
     format: str = Query(default="markdown", pattern="^(markdown|html|pdf)$"),
-    user: CurrentUser = None,
-    db: DbSession = None,
-):
+) -> dict[str, object]:
     engagement = await db.get(Engagement, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
@@ -39,6 +39,7 @@ async def generate_report(
     ]
 
     gen = ReportGenerator()
+    content: str | bytes
     if format == "html":
         content = gen.generate_html(engagement.name, findings_data)
     elif format == "pdf":

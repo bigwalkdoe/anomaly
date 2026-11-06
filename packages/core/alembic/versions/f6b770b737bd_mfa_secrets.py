@@ -113,7 +113,7 @@ def downgrade() -> None:
     # WARNING: constraint name is None; this directive will fail as
     # rendered.  Add a name, or use a naming convention; see
     # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, "playbooks", type_="foreignkey")
+    op.drop_constraint(None, "playbooks", type_="foreignkey")  # type: ignore[arg-type]
     op.create_foreign_key(
         op.f("playbooks_owner_id_fkey"),
         "playbooks",
