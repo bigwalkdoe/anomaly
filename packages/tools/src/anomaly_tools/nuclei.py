@@ -22,10 +22,36 @@ class NucleiTool:
         findings = []
         for line in stdout.splitlines():
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
                 findings.append(
                     FindingDraft(title="nuclei finding", severity="medium", description=line)
                 )
+                continue
+            info = item.get("info") or {}
+            sev = str(info.get("severity", "info")).lower()
+            if sev not in ("info", "low", "medium", "high", "critical"):
+                sev = "info"
+            template_id = item.get("template-id") or item.get("templateID") or "nuclei"
+            host = item.get("host") or ""
+            matched = item.get("matched-at") or item.get("matched") or host
+            findings.append(
+                FindingDraft(
+                    title=info.get("name") or template_id,
+                    severity=sev,
+                    description=info.get("description") or "",
+                    remediation=info.get("remediation"),
+                    metadata={
+                        "fingerprint": f"nuclei:{template_id}:{matched}",
+                        "template_id": template_id,
+                        "host": host,
+                        "matched_at": matched,
+                    },
+                )
+            )
         if not findings:
             findings.append(FindingDraft(title="nuclei scan completed", severity="info"))
         return ToolResult(findings=findings, raw=stdout)
