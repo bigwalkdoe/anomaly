@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+from typing import Any
+
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
 
 
@@ -25,3 +29,35 @@ class NucleiTool:
         if not findings:
             findings.append(FindingDraft(title="nuclei scan completed", severity="info"))
         return ToolResult(findings=findings, raw=stdout)
+
+
+def parse_nuclei_output(
+    output: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
+) -> SimpleNamespace:
+    findings: list[dict[str, Any]] = []
+    for line in (output or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        info = item.get("info") or {}
+        sev = str(info.get("severity", "info")).lower()
+        if sev not in ("info", "low", "medium", "high", "critical"):
+            sev = "info"
+        template_id = item.get("template-id") or item.get("templateID") or "nuclei"
+        host = item.get("host") or (targets[0] if targets else "")
+        matched = item.get("matched-at") or item.get("matched") or host
+        findings.append({
+            "title": info.get("name") or template_id, "severity": sev,
+            "description": info.get("description"),
+            "remediation": info.get("remediation"),
+            "fingerprint": f"nuclei:{template_id}:{matched}",
+            "metadata": {"template_id": template_id, "host": host, "matched_at": matched},
+        })
+    return SimpleNamespace(
+        stdout=output or "", stderr="", exit_code=0,
+        parsed_findings=findings, raw=output or "", findings=[], discovered_targets=[],
+    )

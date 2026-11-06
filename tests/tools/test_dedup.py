@@ -14,9 +14,9 @@ NUCLEI_JSONL = '{"template-id":"dup-t","info":{"name":"Dup","severity":"low"},"h
 
 
 async def _setup(db_session):
-    role = await db_session.scalar(select(Role).where(Role.name == RoleName.ADMIN))
+    role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
     if role is None:
-        role = Role(name=RoleName.ADMIN)
+        role = Role(name=RoleName.admin)
         db_session.add(role)
         await db_session.flush()
     user = User(
@@ -25,7 +25,7 @@ async def _setup(db_session):
     db_session.add(user)
     await db_session.flush()
     db_session.add(UserRole(user_id=user.id, role_id=role.id))
-    eng = Engagement(name="Dedup", mode=EngagementMode.OWN_INFRA, owner_id=user.id)
+    eng = Engagement(name="Dedup", mode=EngagementMode.own_infra, owner_id=user.id)
     db_session.add(eng)
     await db_session.flush()
     scope = Scope(engagement_id=eng.id)
@@ -49,7 +49,7 @@ async def test_duplicate_fingerprint_attaches_not_duplicates(db_session):
             tool="nuclei",
             target_ids=[],
             params={"targets": ["https://d.test"]},
-            status=RunStatus.QUEUED,
+            status=RunStatus.queued,
         )
         db_session.add(run)
         await db_session.commit()
