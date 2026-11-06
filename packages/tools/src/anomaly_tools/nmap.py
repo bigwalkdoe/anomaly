@@ -3,7 +3,30 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from typing import Any
 
-from anomaly_tools.stub import ToolResult
+from anomaly_tools.base import ToolResult, ToolSpec
+
+
+class NmapTool:
+    name = "nmap"
+    supported_target_types = ["ip", "domain", "cidr"]
+
+    def build_cmd(self, spec: ToolSpec) -> list[str]:
+        cmd = ["nmap", "-sS", "-oX", "-"]
+        params = spec.params or {}
+        ports = params.get("ports")
+        if ports:
+            cmd.extend(["-p", str(ports)])
+        top_ports = params.get("top_ports")
+        if top_ports and not ports:
+            cmd.extend(["--top-ports", str(top_ports)])
+        timing = params.get("timing")
+        if timing:
+            cmd.append(f"-T{timing}")
+        cmd.extend(spec.targets)
+        return cmd
+
+    def parse(self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None) -> ToolResult:
+        return parse_nmap_xml(stdout, targets, params)
 
 
 def parse_nmap_xml(
@@ -13,7 +36,7 @@ def parse_nmap_xml(
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        return ToolResult(stdout=xml_text, stderr=str(exc), exit_code=1, parsed_findings=[])
+        return ToolResult(stdout=xml_text, stderr=str(exc), exit_code=1, parsed_findings=[], raw=xml_text)
 
     for host in root.findall("host"):
         status = host.find("status")
@@ -57,9 +80,10 @@ def parse_nmap_xml(
                     },
                 }
             )
-    return ToolResult(stdout=xml_text, exit_code=0, parsed_findings=findings)
+    return ToolResult(stdout=xml_text, exit_code=0, parsed_findings=findings, raw=xml_text)
 
 
 async def run_nmap(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:
     # In-process placeholder; real execution happens in container via runner + parse_nmap_xml.
     return ToolResult(stdout="", exit_code=0, parsed_findings=[])
+

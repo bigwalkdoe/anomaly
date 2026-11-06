@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from anomaly_tools.stub import ToolResult
+from anomaly_tools.base import ToolResult, ToolSpec
 
 
 def _target_type(value: str) -> str:
@@ -14,12 +14,31 @@ def _target_type(value: str) -> str:
     return "domain"
 
 
+class ReconTool:
+    name = "recon"
+    supported_target_types = ["domain", "url", "ip", "cidr"]
+
+    def build_cmd(self, spec: ToolSpec) -> list[str]:
+        # httpx-style discovery placeholder; emits json lines when run in container.
+        cmd = ["httpx", "-json", "-silent"]
+        for t in spec.targets:
+            cmd.extend(["-u", t])
+        return cmd
+
+    def parse(self, stdout: str, targets: list[str] | None = None, params: dict[str, Any] | None = None) -> ToolResult:
+        return parse_recon_output(stdout, targets, params)
+
+
+# Alias for plan naming / httpx wrapper.
+HttpxTool = ReconTool
+
+
 def parse_recon_output(
     output: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
 ) -> ToolResult:
     discovered: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for line in output.splitlines():
+    for line in (output or "").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -45,7 +64,7 @@ def parse_recon_output(
                 },
             }
         )
-    return ToolResult(stdout=output, exit_code=0, parsed_findings=[], discovered_targets=discovered)
+    return ToolResult(stdout=output or "", exit_code=0, parsed_findings=[], discovered_targets=discovered, raw=output or "")
 
 
 async def run_recon(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:
