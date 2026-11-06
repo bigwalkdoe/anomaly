@@ -13,7 +13,7 @@ export default function NewPlaybookPage() {
       <div className="min-h-screen bg-background">
         <TopNav />
         <Sidebar />
-        <main className="flex-1 ml-64 p-8">
+        <main className="flex-1 md:ml-64 p-8">
           <div className="mb-8">
             <h1 className="text-2xl font-bold">New Playbook</h1>
             <p className="text-muted-foreground">Create a multi-step tool workflow.</p>

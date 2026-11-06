@@ -13,7 +13,7 @@ export default function RunDetailPage() {
       <div className="min-h-screen bg-background">
         <TopNav />
         <Sidebar />
-        <main className="flex-1 ml-64 p-8">
+        <main className="flex-1 md:ml-64 p-8">
           <div className="mb-8">
             <Link
               href="/runs"

@@ -39,7 +39,7 @@ export default function SchedulesPage() {
       <div className="min-h-screen bg-background">
       <TopNav />
       <Sidebar />
-      <main className="flex-1 ml-64 p-8">
+      <main className="flex-1 md:ml-64 p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-bold">Schedules</h1>

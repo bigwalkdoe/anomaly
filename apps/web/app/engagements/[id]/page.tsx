@@ -154,7 +154,7 @@ function EngagementDetailContent() {
     <div className="min-h-screen bg-background">
       <TopNav />
       <Sidebar />
-      <main className="flex-1 ml-64 p-8">
+      <main className="flex-1 md:ml-64 p-8">
         <header className="mb-8">
           <Link href="/engagements" className="text-sm text-muted-foreground hover:text-primary">
             ← Back to Engagements
