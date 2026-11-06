@@ -50,3 +50,17 @@ async def test_docker_runner_builds_args():
     assert kwargs["network"] == "anomaly-net"
     assert kwargs.get("privileged") is not True
     assert kwargs.get("mem_limit") == "256m"
+
+
+def test_runspec_accepts_optional_command():
+    spec = RunSpec(
+        tool="nmap",
+        image="img",
+        target_values=["x"],
+        params={},
+        env={},
+        timeout_s=1,
+        network="n",
+        command=["nmap", "-sS", "x"],
+    )
+    assert spec.command == ["nmap", "-sS", "x"]
