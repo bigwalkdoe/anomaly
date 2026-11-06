@@ -1,23 +1,21 @@
 "use client";
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 import { Sidebar } from "@/components/layout/layout";
 import { TopNav } from "@/components/layout/layout";
-import { useAuth } from "@/components/AuthContext";
-import { cn } from '@/lib/utils';
+import { RequireAuth } from "@/components/RequireAuth";
+import { cn } from "@/lib/utils";
 import { apiJson } from "@/lib/api";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  BarChart3,
   Activity,
   Target,
   FileText,
@@ -44,47 +42,48 @@ interface DashboardData {
   high: number;
 }
 
-export default function DashboardPage() {
-  const { isAuthenticated } = useAuth();
+function DashboardContent() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setLoading(false);
-      return;
-    }
+    let cancelled = false;
     setLoading(true);
+    setError(null);
     apiJson<DashboardData>("/api/dashboard")
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [isAuthenticated]);
+      .then((result) => {
+        if (!cancelled) setData(result);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setData(null);
+          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-            <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <Sidebar />
+        <main className="flex-1 ml-64 p-8">
+          <div className="flex items-center justify-center h-64">
+            <div className="flex flex-col items-center gap-4">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+              </div>
+              <p className="text-muted-foreground">Loading dashboard...</p>
+            </div>
           </div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <Shield className="h-12 w-12 text-primary" />
-          <h2 className="text-2xl font-bold">Welcome to Anomaly</h2>
-          <p className="text-muted-foreground">Please sign in to get started</p>
-          <Button asChild className="mt-4">
-            <a href="/login">Sign in</a>
-          </Button>
-        </div>
+        </main>
       </div>
     );
   }
@@ -118,7 +117,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav user={{ name: "Admin" }} />
+      <TopNav />
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -129,12 +128,18 @@ export default function DashboardPage() {
             </p>
           </div>
           <Button asChild>
-            <a href="/engagements/new">
+            <Link href="/engagements">
               <Plus className="h-4 w-4 mr-2" />
-              New Engagement
-            </a>
+              Engagements
+            </Link>
           </Button>
         </div>
+
+        {error ? (
+          <div className="mb-6 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {statCards.map((card) => (
@@ -164,10 +169,10 @@ export default function DashboardPage() {
                   <div className="flex flex-col items-center gap-3">
                     <Activity className="h-12 w-12 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
-                      No findings available.
+                      Open Findings to review results.
                     </p>
                     <Button asChild size="sm">
-                      <a href="/engagements/new">Create Engagement</a>
+                      <Link href="/findings">View Findings</Link>
                     </Button>
                   </div>
                 </div>
@@ -186,10 +191,10 @@ export default function DashboardPage() {
                   <div className="flex flex-col items-center gap-3">
                     <Clock className="h-12 w-12 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
-                      No runs available.
+                      Open Runs to monitor execution.
                     </p>
                     <Button asChild size="sm">
-                      <a href="/runs">View Runs</a>
+                      <Link href="/runs">View Runs</Link>
                     </Button>
                   </div>
                 </div>
@@ -203,37 +208,29 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Button
-                  asChild
-                  className="w-full justify-start"
-                  variant="outline"
-                >
-                  <Target className="h-4 w-4 mr-2" />
-                  New Engagement
+                <Button asChild className="w-full justify-start" variant="outline">
+                  <Link href="/engagements">
+                    <Target className="h-4 w-4 mr-2" />
+                    Engagements
+                  </Link>
                 </Button>
-                <Button
-                  asChild
-                  className="w-full justify-start"
-                  variant="outline"
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  New Run
+                <Button asChild className="w-full justify-start" variant="outline">
+                  <Link href="/runs">
+                    <Play className="h-4 w-4 mr-2" />
+                    Runs
+                  </Link>
                 </Button>
-                <Button
-                  asChild
-                  className="w-full justify-start"
-                  variant="outline"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Generate Report
+                <Button asChild className="w-full justify-start" variant="outline">
+                  <Link href="/reports">
+                    <FileText className="h-4 w-4 mr-2" />
+                    Reports
+                  </Link>
                 </Button>
-                <Button
-                  asChild
-                  className="w-full justify-start"
-                  variant="outline"
-                >
-                  <Shield className="h-4 w-4 mr-2" />
-                  MFA Settings
+                <Button asChild className="w-full justify-start" variant="outline">
+                  <Link href="/settings">
+                    <Shield className="h-4 w-4 mr-2" />
+                    Settings
+                  </Link>
                 </Button>
               </div>
             </CardContent>
@@ -241,5 +238,13 @@ export default function DashboardPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <RequireAuth>
+      <DashboardContent />
+    </RequireAuth>
   );
 }

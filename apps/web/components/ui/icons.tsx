@@ -5,6 +5,7 @@
 export {
   Activity,
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   BarChart2,
   BarChart3,

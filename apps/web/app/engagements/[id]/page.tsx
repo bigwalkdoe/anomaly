@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 
 import { TopNav } from "@/components/layout/layout";
 import { Sidebar } from "@/components/layout/layout";
-import { useAuth } from "@/components/AuthContext";
+import { RequireAuth } from "@/components/RequireAuth";
 import { apiJson } from "@/lib/api";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -75,7 +75,7 @@ interface Run {
   scope_warning: boolean;
 }
 
-export default function EngagementDetailPage() {
+function EngagementDetailContent() {
   const params = useParams();
   const router = useRouter();
   const engagementId = params.id as string;
@@ -152,7 +152,7 @@ export default function EngagementDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <TopNav user={{ name: "Admin" }} />
+      <TopNav />
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
         <header className="mb-8">
@@ -275,6 +275,14 @@ export default function EngagementDetailPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function EngagementDetailPage() {
+  return (
+    <RequireAuth>
+      <EngagementDetailContent />
+    </RequireAuth>
   );
 }
 
