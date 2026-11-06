@@ -17,6 +17,7 @@ class RunSpec:
     timeout_s: int
     network: str
     resource_limits: dict[str, Any] = field(default_factory=dict)
+    command: list[str] | None = None
 
 
 @dataclass

@@ -1,22 +1,52 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
+from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
 
-@dataclass
-class ToolResult:
-    stdout: str = ""
-    stderr: str = ""
-    exit_code: int = 0
-    parsed_findings: list[dict[str, Any]] = field(default_factory=list)
-    artifacts: list[str] = field(default_factory=list)
+__all__ = ["FindingDraft", "StubTool", "ToolResult", "ToolSpec", "run_stub", "TOOL_REGISTRY"]
+
+
+class StubTool:
+    name = "stub"
+    supported_target_types = ["domain", "ip", "url", "cidr", "service"]
+
+    def build_cmd(self, spec: ToolSpec) -> list[str]:
+        target = spec.targets[0] if spec.targets else ""
+        return ["stub", target] if target else ["stub"]
+
+    def parse(
+        self,
+        stdout: str,
+        targets: list[str] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> ToolResult:
+        target = stdout.replace("stub reached", "").strip() if stdout else ""
+        if not target and targets:
+            target = targets[0]
+        desc = f"Stub finding for {target}" if target else "Stub tool executed successfully."
+        return ToolResult(
+            findings=[
+                FindingDraft(
+                    title=f"Stub finding: target reachable ({target})"
+                    if target
+                    else "Stub finding: target reachable",
+                    severity="info",
+                    description=desc,
+                )
+            ],
+            raw=stdout,
+            stdout=stdout,
+            exit_code=0,
+        )
 
 
 async def run_stub(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:
     target = targets[0] if targets else "unknown"
+    stdout = f"stub reached {target}"
     return ToolResult(
-        stdout=f"stub reached {target}",
+        stdout=stdout,
+        stderr="",
         exit_code=0,
         parsed_findings=[
             {
@@ -25,7 +55,16 @@ async def run_stub(targets: list[str], params: dict[str, Any] | None = None) -> 
                 "description": "Stub tool executed successfully.",
             }
         ],
+        findings=[
+            {
+                "title": f"Stub finding: target reachable ({target})",
+                "severity": "info",
+                "description": "Stub tool executed successfully.",
+            }
+        ],
+        raw=stdout,
     )
 
 
+# Back-compat
 TOOL_REGISTRY = {"stub": run_stub}
