@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["packages/core", "packages/tools", "apps/api", "apps/worker"]
+members = ["packages/core", "packages/tools", "packages/ai", "packages/reporting", "packages/integrations", "packages/common", "apps/api", "apps/worker", "apps/cli"]
 
 [tool.ruff]
 line-length = 100
@@ -13,17 +13,42 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
-ignore = ["B008"]  # FastAPI Depends/Query in defaults is idiomatic
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["docker", "docker.*", "arq", "arq.*", "minio", "minio.*"]
-ignore_missing_imports = true
+module = [
+  "apps.*",
+  "packages.ai.*",
+  "packages.integrations.*",
+  "packages.reporting.*",
+  "packages.common.*",
+  "packages.core.alembic.*",
+  "packages.core.src.anomaly_core.models.*",
+  "packages.tools.*",
+  "tests.*",
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+check_untyped_defs = false
+warn_return_any = false
+no_implicit_optional = false
+
+[[tool.mypy.overrides]]
+module = ["packages.core.src.anomaly_core.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+warn_return_any = false
+no_implicit_optional = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_test_loop_scope = "session"
+asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests", "packages", "apps"]

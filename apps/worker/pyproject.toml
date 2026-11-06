@@ -1,9 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "anomaly-worker"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = ["anomaly-core", "arq>=0.26", "docker>=7.1"]
 
-[tool.uv.sources]
-anomaly-core = { workspace = true }
-
+[tool.setuptools.packages.find]
+where = ["src"]

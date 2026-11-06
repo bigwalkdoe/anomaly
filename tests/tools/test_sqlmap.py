@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from anomaly_tools.base import ToolSpec
 from anomaly_tools.sqlmap import SqlmapTool
 

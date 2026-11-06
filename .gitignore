@@ -1,29 +1,30 @@
+# worktrees
+.worktrees/
+
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 *.egg-info/
-dist/
 build/
+dist/
 .venv/
 venv/
-.env
+env/
 
-# Caches / tooling
+# caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
 
-# Local data
+# env / secrets
+.env
 *.db
-*.sqlite*
 
-# Node (future web)
+# node
+.next/
 node_modules/
-
-# OS / editor
-.DS_Store
-
-# Superpowers SDD scratch
-.superpowers/
-.worktrees/
-
+*.tsbuildinfo
+.env

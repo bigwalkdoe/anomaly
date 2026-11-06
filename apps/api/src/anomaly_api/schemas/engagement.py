@@ -1,42 +1,57 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class EngagementCreate(BaseModel):
-    name: str
-    mode: str
+    name: str = Field(..., min_length=1, max_length=255)
+    mode: str = Field(default="own_infra")
+    status: str | None = Field(default="draft")
     client_name: str | None = None
     rules_of_engagement: str | None = None
 
 
 class EngagementUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    mode: str | None = None
     status: str | None = None
     client_name: str | None = None
     rules_of_engagement: str | None = None
 
 
-class EngagementOut(BaseModel):
-    id: str
+class EngagementResponse(BaseModel):
+    id: UUID
     name: str
     mode: str
     status: str
+    owner_id: UUID
     client_name: str | None = None
 
-
-class ScopePut(BaseModel):
-    notes: str | None = None
-    in_scope: list[str] = []
-    out_of_scope: list[str] = []
+    class Config:
+        from_attributes = True
 
 
-class ScopeOut(BaseModel):
-    notes: str | None = None
-    in_scope: list[str] = []
-    out_of_scope: list[str] = []
+class ScopeEntryCreate(BaseModel):
+    kind: str  # "in" or "out"
+    target_value: str = Field(..., min_length=1, max_length=500)
+
+
+class ScopeUpdate(BaseModel):
+    entries: list[ScopeEntryCreate]
 
 
 class TargetCreate(BaseModel):
+    value: str = Field(..., min_length=1, max_length=500)
+    type: str = Field(default="domain")
+
+
+class TargetResponse(BaseModel):
+    id: UUID
+    engagement_id: UUID
     value: str
     type: str
-    status: str = "active"
-    discovered: bool = False
+
+    class Config:
+        from_attributes = True

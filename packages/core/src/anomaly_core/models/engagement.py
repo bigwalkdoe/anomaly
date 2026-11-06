@@ -1,52 +1,115 @@
-import enum
-import uuid
-from datetime import date, datetime
+from __future__ import annotations
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+import uuid
+from datetime import UTC, datetime
+from enum import Enum, StrEnum
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    UUID,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from anomaly_core.db import Base
 
-
-class EngagementMode(enum.StrEnum):
-    OWN_INFRA = "own_infra"
-    BUG_BOUNTY = "bug_bounty"
-    CLIENT = "client"
+if TYPE_CHECKING:
+    from .finding import Finding
+    from .user import User
 
 
-class EngagementStatus(enum.StrEnum):
-    DRAFT = "draft"
-    ACTIVE = "active"
-    PAUSED = "paused"
-    CLOSED = "closed"
+def _enum_values(enum_cls: type[Enum]) -> list[str]:
+    return [member.value for member in enum_cls]
+
+
+class EngagementMode(StrEnum):
+    own_infra = "own_infra"
+    bug_bounty = "bug_bounty"
+    client = "client"
+
+
+class EngagementStatus(StrEnum):
+    draft = "draft"
+    active = "active"
+    paused = "paused"
+    closed = "closed"
+
+
+class TargetType(StrEnum):
+    domain = "domain"
+    ip = "ip"
+    cidr = "cidr"
+    url = "url"
+    service = "service"
+
+
+class TargetStatus(StrEnum):
+    active = "active"
+    discovered = "discovered"
+    confirmed = "confirmed"
+
+
+class ScopeEntryKind(StrEnum):
+    in_ = "in"
+    out = "out"
 
 
 class Engagement(Base):
     __tablename__ = "engagements"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     mode: Mapped[EngagementMode] = mapped_column(
-        Enum(EngagementMode, name="engagement_mode"), nullable=False
+        SAEnum(EngagementMode, values_callable=_enum_values),
+        default=EngagementMode.own_infra,
+        nullable=False,
     )
     status: Mapped[EngagementStatus] = mapped_column(
-        Enum(EngagementStatus, name="engagement_status"),
+        SAEnum(EngagementStatus, values_callable=_enum_values),
+        default=EngagementStatus.draft,
         nullable=False,
-        default=EngagementStatus.DRAFT,
+        index=True,
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    client_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    client_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     rules_of_engagement: Mapped[str | None] = mapped_column(Text, nullable=True)
-    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    owner: Mapped[User] = relationship("User", lazy="selectin")
+    scope: Mapped[Scope | None] = relationship(
+        "Scope",
+        back_populates="engagement",
+        uselist=False,
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    targets: Mapped[list[Target]] = relationship(
+        "Target", back_populates="engagement", cascade="all, delete-orphan", lazy="selectin"
+    )
+    findings: Mapped[list[Finding]] = relationship(
+        "Finding", back_populates="engagement", cascade="all, delete-orphan", lazy="selectin"
     )
 
 
@@ -63,14 +126,35 @@ class Scope(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
-    entries: Mapped[list["ScopeEntry"]] = relationship(
-        back_populates="scope", cascade="all, delete-orphan"
+    engagement: Mapped[Engagement] = relationship(
+        "Engagement", back_populates="scope", lazy="selectin"
+    )
+    entries: Mapped[list[ScopeEntry]] = relationship(
+        "ScopeEntry", back_populates="scope", cascade="all, delete-orphan", lazy="selectin"
+    )
+    in_scope_targets: Mapped[list[ScopeEntry]] = relationship(
+        "ScopeEntry",
+        primaryjoin="and_(Scope.id==ScopeEntry.scope_id, ScopeEntry.kind=='in')",
+        viewonly=True,
+        lazy="selectin",
+    )
+    out_of_scope_entries: Mapped[list[ScopeEntry]] = relationship(
+        "ScopeEntry",
+        primaryjoin="and_(Scope.id==ScopeEntry.scope_id, ScopeEntry.kind=='out')",
+        viewonly=True,
+        lazy="selectin",
     )
 
 
@@ -81,10 +165,24 @@ class ScopeEntry(Base):
     scope_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scopes.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    kind: Mapped[str] = mapped_column(String(10), nullable=False)  # in / out
-    target_value: Mapped[str] = mapped_column(String(500), nullable=False)
+    kind: Mapped[ScopeEntryKind] = mapped_column(
+        SAEnum(ScopeEntryKind, values_callable=_enum_values), nullable=False, index=True
+    )
+    target_value: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
 
-    scope: Mapped[Scope] = relationship(back_populates="entries")
+    scope: Mapped[Scope] = relationship("Scope", back_populates="entries", lazy="selectin")
 
 
 class Target(Base):
@@ -97,32 +195,30 @@ class Target(Base):
         nullable=False,
         index=True,
     )
-    value: Mapped[str] = mapped_column(String(500), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="active")
+    value: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    type: Mapped[TargetType] = mapped_column(
+        SAEnum(TargetType, values_callable=_enum_values), nullable=False, index=True
+    )
+    status: Mapped[TargetStatus] = mapped_column(
+        SAEnum(TargetStatus, values_callable=_enum_values),
+        default=TargetStatus.active,
+        nullable=False,
+        index=True,
+    )
     discovered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
-
-class EngagementMember(Base):
-    __tablename__ = "engagement_members"
-
-    engagement_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("engagements.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    role: Mapped[str] = mapped_column(String(50), nullable=False)  # admin/pentester/client_viewer
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+    engagement: Mapped[Engagement] = relationship(
+        "Engagement", back_populates="targets", lazy="selectin"
     )

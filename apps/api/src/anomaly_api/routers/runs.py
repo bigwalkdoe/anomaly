@@ -1,122 +1,136 @@
-from typing import Annotated, Any
+from __future__ import annotations
+
+import os
+from typing import Annotated
 from uuid import UUID
 
 from anomaly_core.audit import AuditService
-from anomaly_core.models.engagement import Engagement, EngagementMember, Scope, ScopeEntry
-from anomaly_core.models.finding import Evidence
-from anomaly_core.models.run import Run, RunStatus
-from anomaly_core.models.user import User
-from anomaly_core.rbac import can_access_engagement, is_admin
+from anomaly_core.db import SessionLocal
+from anomaly_core.models import Engagement, RoleName, Run, RunStatus
 from anomaly_core.scope import check_scope
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from anomaly_api.deps import get_current_user, get_db, require_engagement_access
+from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
+from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
 
-engagement_runs_router = APIRouter(prefix="/api/engagements", tags=["runs"])
-runs_router = APIRouter(prefix="/api/runs", tags=["runs"])
-
-# Back-compat export name used by main.py earlier.
-router = engagement_runs_router
+router = APIRouter(tags=["runs"])
 
 
 class RunCreate(BaseModel):
-    tool: str
-    targets: list[str] = []
-    params: dict[str, Any] = {}
+    tool: str = Field(default="stub")
+    targets: list[str] = Field(default_factory=list)
+    params: dict = Field(default_factory=dict)
 
 
-@engagement_runs_router.post("/{engagement_id}/runs", status_code=202)
+class RunResponse(BaseModel):
+    id: UUID
+    status: str
+    scope_warning: bool
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/api/engagements/{engagement_id}/runs", response_model=list[RunResponse])
+async def list_runs(
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
+    db: DbSession,
+):
+    runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement.id))).all()
+    return [RunResponse.model_validate(r) for r in runs]
+
+
+@router.post(
+    "/api/engagements/{engagement_id}/runs",
+    response_model=RunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def create_run(
-    engagement_id: UUID,
-    body: RunCreate,
-    eng: Annotated[Engagement, Depends(require_engagement_access("client_viewer"))],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict[str, Any]:
-    # Client viewers cannot create runs.
-    if not await is_admin(current_user, db):
-        member = await db.scalar(
-            select(EngagementMember).where(
-                EngagementMember.engagement_id == engagement_id,
-                EngagementMember.user_id == current_user.id,
-            )
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
+    payload: RunCreate,
+    user: CurrentUser,
+    db: DbSession,
+):
+    targets = payload.targets
+    try:
+        from anomaly_core.models import Scope
+        from sqlalchemy.orm import selectinload
+
+        res = await db.execute(
+            select(Engagement)
+            .options(selectinload(Engagement.scope).selectinload(Scope.entries))
+            .where(Engagement.id == engagement.id)
         )
-        if member is None or member.role == "client_viewer":
-            raise HTTPException(status_code=403, detail="Forbidden")
-
-    scope = await db.scalar(select(Scope).where(Scope.engagement_id == eng.id))
-    entries = []
-    if scope:
-        rows = await db.scalars(select(ScopeEntry).where(ScopeEntry.scope_id == scope.id))
-        entries = list(rows)
-    targets = body.targets or []
-    scope_result = check_scope(entries, targets)
-
+        eng_loaded = res.scalar_one()
+    except Exception:
+        eng_loaded = engagement
+    result = check_scope(eng_loaded, targets)
+    run_params = dict(payload.params or {})
+    run_params["targets"] = targets  # scope-checked targets must not be overridden
     run = Run(
-        engagement_id=eng.id,
-        user_id=current_user.id,
-        tool=body.tool,
-        target_ids=[],
-        params={**(body.params or {}), "targets": targets},
-        status=RunStatus.QUEUED,
-        scope_warning=scope_result.has_warning,
+        engagement_id=engagement.id,
+        user_id=user.id,
+        tool=payload.tool,
+        status=RunStatus.queued,
+        scope_warning=result.has_warning,
+        params=run_params,
     )
     db.add(run)
     await db.flush()
-    if scope_result.has_warning:
+    if result.has_warning:
         await AuditService.log(
-            db,
-            current_user.id,
-            "scope.warning",
-            "run",
-            run.id,
-            eng.id,
-            {"out_of_scope": scope_result.out_of_scope, "targets": targets},
+            actor_id=user.id,
+            action="scope.warning",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=engagement.id,
+            metadata={"targets": targets, "out_of_scope": result.out_of_scope},
+            db=db,
         )
     await AuditService.log(
-        db, current_user.id, "run.enqueue", "run", run.id, eng.id, {"tool": body.tool}
+        actor_id=user.id,
+        action="run.enqueue",
+        resource_type="run",
+        resource_id=run.id,
+        engagement_id=engagement.id,
+        metadata={"tool": run.tool, "targets": targets},
+        db=db,
     )
     await db.commit()
-    return {"id": str(run.id), "status": run.status.value}
+    await db.refresh(run)
+
+    if os.environ.get("RUNNER_MODE") == "inline" or os.environ.get("ANOMALY_INLINE_RUNS") == "1":
+        try:
+            from anomaly_worker.executor import execute_run
+
+            async with SessionLocal() as db2:
+                await execute_run(db2, run.id)
+        except Exception:
+            pass
+
+    return RunResponse.model_validate(run)
 
 
-@runs_router.get("/{run_id}")
-async def get_run(
-    run_id: UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict[str, Any]:
-    run = await db.get(Run, run_id)
+@router.get("/api/runs/{run_id}", response_model=RunResponse)
+async def get_run(run_id: str, user: CurrentUser, db: DbSession):
+    try:
+        rid = UUID(str(run_id))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid run_id") from None
+    run = await db.get(Run, rid)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not await can_access_engagement(current_user, run.engagement_id, db):
+    engagement = await db.get(Engagement, run.engagement_id)
+    if engagement is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    return {
-        "id": str(run.id),
-        "status": run.status.value,
-        "tool": run.tool,
-        "scope_warning": run.scope_warning,
-    }
+    from anomaly_core.rbac import engagement_accessible
 
-
-@runs_router.get("/{run_id}/logs")
-async def get_run_logs(
-    run_id: UUID,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict[str, Any]:
-    run = await db.get(Run, run_id)
-    if run is None:
+    if not await engagement_accessible(db, user, engagement):
         raise HTTPException(status_code=404, detail="Run not found")
-    if not await can_access_engagement(current_user, run.engagement_id, db):
-        raise HTTPException(status_code=404, detail="Run not found")
-    rows = await db.scalars(
-        select(Evidence).where(Evidence.run_id == run.id, Evidence.type == "tool_output")
-    )
-    logs = [
-        {"stdout": r.meta.get("stdout"), "stderr": r.meta.get("stderr")} for r in rows if r.meta
-    ]
-    return {"run_id": str(run.id), "logs": logs}
+    return RunResponse.model_validate(run)

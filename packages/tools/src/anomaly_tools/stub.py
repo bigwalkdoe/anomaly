@@ -1,70 +1,57 @@
 from __future__ import annotations
 
-from typing import Any
+from anomaly_tools.base import FindingDraft, ToolSpec
+from anomaly_tools.base import ToolResult as BaseToolResult
 
-from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
 
-__all__ = ["FindingDraft", "StubTool", "ToolResult", "ToolSpec", "run_stub", "TOOL_REGISTRY"]
+class ToolResult:
+    """Legacy result shape kept for compatibility with older executor code."""
+
+    def __init__(self, findings=None):
+        self.findings = findings or []
 
 
 class StubTool:
     name = "stub"
-    supported_target_types = ["domain", "ip", "url", "cidr", "service"]
+    supported_target_types = ["domain", "ip", "url", "cidr"]
 
     def build_cmd(self, spec: ToolSpec) -> list[str]:
+        # Stub runs in-process/container placeholder; command is informational.
         target = spec.targets[0] if spec.targets else ""
         return ["stub", target] if target else ["stub"]
 
-    def parse(
-        self,
-        stdout: str,
-        targets: list[str] | None = None,
-        params: dict[str, Any] | None = None,
-    ) -> ToolResult:
+    def parse(self, stdout: str) -> BaseToolResult:
         target = stdout.replace("stub reached", "").strip() if stdout else ""
-        if not target and targets:
-            target = targets[0]
-        desc = f"Stub finding for {target}" if target else "Stub tool executed successfully."
-        return ToolResult(
+        desc = f"Stub finding for {target}" if target else "Stub finding"
+        return BaseToolResult(
             findings=[
                 FindingDraft(
-                    title=f"Stub finding: target reachable ({target})"
-                    if target
-                    else "Stub finding: target reachable",
+                    title="Stub finding: target reachable",
                     severity="info",
                     description=desc,
                 )
             ],
             raw=stdout,
-            stdout=stdout,
-            exit_code=0,
         )
 
 
-async def run_stub(targets: list[str], params: dict[str, Any] | None = None) -> ToolResult:
-    target = targets[0] if targets else "unknown"
-    stdout = f"stub reached {target}"
-    return ToolResult(
-        stdout=stdout,
-        stderr="",
-        exit_code=0,
-        parsed_findings=[
+def stub_tool(targets=None, **kwargs):
+    targets = targets or []
+    findings = []
+    for t in targets:
+        findings.append(
             {
-                "title": f"Stub finding: target reachable ({target})",
+                "title": "Stub finding: target reachable",
                 "severity": "info",
-                "description": "Stub tool executed successfully.",
+                "description": f"Stub finding for {t}",
             }
-        ],
-        findings=[
+        )
+    if not findings:
+        findings.append(
             {
-                "title": f"Stub finding: target reachable ({target})",
+                "title": "Stub finding: target reachable",
                 "severity": "info",
-                "description": "Stub tool executed successfully.",
+                "description": "Stub finding",
             }
-        ],
-        raw=stdout,
-    )
-
-
-# Back-compat
-TOOL_REGISTRY = {"stub": run_stub}
+        )
+    return ToolResult(findings=findings)

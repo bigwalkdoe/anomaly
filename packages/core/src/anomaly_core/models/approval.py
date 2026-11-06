@@ -1,73 +1,74 @@
-import uuid
-from datetime import datetime
-from typing import Any
+from __future__ import annotations
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import JSON, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+import uuid
+from datetime import UTC, datetime
+from enum import Enum, StrEnum
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    UUID,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+)
+from sqlalchemy import (
+    Enum as SAEnum,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from anomaly_core.db import Base
+
+if TYPE_CHECKING:
+    from .user import User
+
+
+def _enum_values(enum_cls: type[Enum]) -> list[str]:
+    return [member.value for member in enum_cls]
+
+
+class ApprovalStatus(StrEnum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
 
 
 class Approval(Base):
     __tablename__ = "approvals"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    resource_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    resource_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    resource_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     requester_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     approver_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
-    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-
-class Playbook(Base):
-    __tablename__ = "playbooks"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(300), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    owner_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
-    )
-    steps: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-
-class PlaybookStep(Base):
-    __tablename__ = "playbook_steps"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    playbook_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("playbooks.id", ondelete="CASCADE"),
+    status: Mapped[ApprovalStatus] = mapped_column(
+        SAEnum(ApprovalStatus, values_callable=_enum_values),
+        default=ApprovalStatus.pending,
         nullable=False,
         index=True,
     )
-    position: Mapped[int] = mapped_column(nullable=False, default=0)
-    tool: Mapped[str] = mapped_column(String(200), nullable=False)
-    params: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    condition: Mapped[str | None] = mapped_column(Text, nullable=True)
-    on_failure: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+        index=True,
     )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+    requester: Mapped[User] = relationship("User", foreign_keys=[requester_id], lazy="selectin")
+    approver: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approver_id], lazy="selectin"
     )

@@ -1,0 +1,130 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: anomaly
+      POSTGRES_PASSWORD_FILE: ***REMOVED***
+      POSTGRES_DB: anomaly
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - anomaly-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anomaly -d anomaly"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - postgres_password
+
+  redis:
+    image: redis:7
+    command: redis-server --requirepass ${REDIS_PASSWORD:***REMOVED***
+    networks:
+      - anomaly-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:***REMOVED***", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD_FILE: ***REMOVED***
+    volumes:
+      - minio_data:/data
+    networks:
+      - anomaly-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+      - minio_root_password
+
+  anomaly-api:
+    build:
+      context: ..
+      dockerfile: infra/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://anomaly:${POSTGRES_PASSWORD:***REMOVED***
+      REDIS_URL: redis://:${REDIS_PASSWORD:***REMOVED***@redis:6379/0
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY_FILE: ***REMOVED***
+      MINIO_BUCKET: anomaly-evidence
+      RUNNER_IMAGE: anomaly-runner:prod
+      RUNNER_NETWORK: anomaly-net
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - anomaly-net
+    secrets:
+      - jwt_secret
+      - postgres_password
+      - minio_root_password
+
+  anomaly-worker:
+    build:
+      context: ..
+      dockerfile: infra/worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://anomaly:${POSTGRES_PASSWORD:***REMOVED***
+      REDIS_URL: redis://:${REDIS_PASSWORD:***REMOVED***@redis:6379/0
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY_FILE: ***REMOVED***
+      MINIO_BUCKET: anomaly-evidence
+      RUNNER_IMAGE: anomaly-runner:prod
+      RUNNER_NETWORK: anomaly-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - anomaly-net
+    secrets:
+      - jwt_secret
+      - postgres_password
+      - minio_root_password
+
+  anomaly-runner:
+    image: anomaly-runner:prod
+    networks:
+      - anomaly-net
+    volumes:
+      - runner_scratch:/scratch
+    command: ["sleep", "infinity"]
+
+networks:
+  anomaly-net:
+    name: anomaly-net
+
+volumes:
+  postgres_data:
+  minio_data:
+  runner_scratch:
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  minio_root_password:
+    file: ./secrets/minio_root_password
+  jwt_secret:
+    file: ./secrets/jwt_secret

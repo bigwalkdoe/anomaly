@@ -1,15 +1,15 @@
-from collections.abc import AsyncGenerator, Callable
-from typing import Annotated, Any
-from uuid import UUID
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Annotated
 
 from anomaly_core.auth import decode_token
 from anomaly_core.db import SessionLocal
-from anomaly_core.models.engagement import Engagement
-from anomaly_core.models.user import User
-from anomaly_core.rbac import engagement_accessible
-from fastapi import Depends, HTTPException
+from anomaly_core.models import Engagement, RoleName, User
+from anomaly_core.rbac import engagement_accessible, has_permission
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -20,52 +20,98 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def get_current_user(
+DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+async def get_optional_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> User:
+    db: DbSession,
+) -> User | None:
     if credentials is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    payload = decode_token(credentials.credentials)
-    if payload.type != "access":
-        raise HTTPException(status_code=401, detail="Invalid token type")
+        return None
     try:
-        user_id = payload.sub
-    except Exception as exc:
-        raise HTTPException(status_code=401, detail="Invalid token") from exc
-    user = await db.scalar(select(User).where(User.id == user_id))
+        payload = decode_token(credentials.credentials)
+    except HTTPException:
+        return None
+    if payload.type != "access":
+        return None
+    try:
+        user_id = uuid.UUID(payload.sub)
+    except ValueError:
+        return None
+    user = await db.get(User, user_id)
     if user is None or not user.is_active:
-        raise HTTPException(status_code=401, detail="User inactive")
+        return None
     return user
 
 
-def require_role(*roles: str) -> Callable[..., Any]:
-    async def dependency(
-        current_user: Annotated[User, Depends(get_current_user)],
-    ) -> User:
-        # Task 5 wires full RBAC; accept any authenticated user for now if roles not resolved.
-        if not roles:
-            return current_user
-        return current_user
+async def get_current_user(
+    user: Annotated[User | None, Depends(get_optional_user)],
+) -> User:
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_role(*roles: RoleName) -> Callable[..., Awaitable[User]]:
+    async def dependency(user: CurrentUser) -> User:
+        if not any(role.name in roles for role in user.roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient role",
+            )
+        return user
+
+    return dependency
+
+
+def require_permission(permission: str) -> Callable[..., Awaitable[User]]:
+    """FastAPI dependency factory: resolve the current user, then check a permission.
+
+    Admins hold the "*" permission and always pass. Nested inside
+    ``require_engagement_access`` (via ``use_cache=False``) it re-uses the same
+    resolved user.
+    """
+
+    async def dependency(user: CurrentUser) -> User:
+        if not has_permission(user, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permission",
+            )
+        return user
 
     return dependency
 
 
 def require_engagement_access(
-    min_role: str = "client_viewer", hide: bool = False
-) -> Callable[..., Any]:
+    engagement_id_param: str = "engagement_id",
+    min_role: RoleName = RoleName.client_viewer,
+) -> Callable[..., Awaitable[Engagement]]:
     async def dependency(
-        engagement_id: UUID,
-        current_user: Annotated[User, Depends(get_current_user)],
-        db: Annotated[AsyncSession, Depends(get_db)],
+        request: Request,
+        user: CurrentUser,
+        db: DbSession,
     ) -> Engagement:
-        eng = await db.scalar(select(Engagement).where(Engagement.id == engagement_id))
-        if eng is None:
+        engagement_id = request.path_params.get(engagement_id_param)
+        if engagement_id is None:
+            raise HTTPException(status_code=400, detail="Missing engagement_id")
+        try:
+            engagement_uuid = uuid.UUID(str(engagement_id))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid engagement_id") from None
+        engagement = await db.get(Engagement, engagement_uuid)
+        if engagement is None:
             raise HTTPException(status_code=404, detail="Engagement not found")
-        if not await engagement_accessible(current_user, engagement_id, min_role, db):
-            if hide:
-                raise HTTPException(status_code=404, detail="Engagement not found")
+        if not await engagement_accessible(db, user, engagement, min_role=min_role):
             raise HTTPException(status_code=403, detail="Forbidden")
-        return eng
+        return engagement
 
     return dependency

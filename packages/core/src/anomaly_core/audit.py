@@ -6,44 +6,43 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from anomaly_core.models.audit import AuditLog
+from anomaly_core.models import AuditLog
 
 
 class AuditService:
     @staticmethod
     async def log(
-        db: AsyncSession,
-        actor_id: uuid.UUID | str | None,
+        actor_id: uuid.UUID | None,
         action: str,
         resource_type: str,
-        resource_id: uuid.UUID | str | None = None,
-        engagement_id: uuid.UUID | str | None = None,
+        resource_id: uuid.UUID | None = None,
+        engagement_id: uuid.UUID | None = None,
         metadata: dict[str, Any] | None = None,
-        commit: bool = False,
+        db: AsyncSession | None = None,
     ) -> AuditLog:
-        row = AuditLog(
-            actor_id=uuid.UUID(str(actor_id)) if actor_id else None,
+        entry = AuditLog(
+            actor_id=actor_id,
             action=action,
             resource_type=resource_type,
-            resource_id=uuid.UUID(str(resource_id)) if resource_id else None,
-            engagement_id=uuid.UUID(str(engagement_id)) if engagement_id else None,
-            meta=metadata or {},
+            resource_id=resource_id,
+            engagement_id=engagement_id,
+            metadata_=metadata or {},
         )
-        db.add(row)
-        await db.flush()
-        if commit:
-            await db.commit()
-        return row
+        if db is not None:
+            db.add(entry)
+            await db.flush()
+            return entry
+        raise ValueError("db session required")
 
 
 async def get_audit_log(
     db: AsyncSession,
-    engagement_id: uuid.UUID | str | None = None,
+    engagement_id: uuid.UUID | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> list[AuditLog]:
-    stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
-    if engagement_id:
-        stmt = stmt.where(AuditLog.engagement_id == uuid.UUID(str(engagement_id)))
-    result = await db.scalars(stmt)
-    return list(result)
+):
+    stmt = select(AuditLog)
+    if engagement_id is not None:
+        stmt = stmt.where(AuditLog.engagement_id == engagement_id)
+    stmt = stmt.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)
+    return (await db.scalars(stmt)).all()

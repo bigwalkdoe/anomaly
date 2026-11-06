@@ -1,253 +1,195 @@
-from typing import Annotated, Any
-from uuid import UUID
+from __future__ import annotations
+
+from typing import Annotated
 
 from anomaly_core.audit import AuditService
-from anomaly_core.models.engagement import (
+from anomaly_core.models import (
     Engagement,
     EngagementMember,
     EngagementMode,
     EngagementStatus,
+    RoleName,
     Scope,
     ScopeEntry,
+    ScopeEntryKind,
     Target,
+    TargetType,
 )
-from anomaly_core.models.finding import Finding, FindingSeverity, FindingStatus
-from anomaly_core.models.user import User
-from anomaly_core.rbac import is_admin
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from anomaly_api.deps import get_current_user, get_db, require_engagement_access
+from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.schemas.engagement import (
     EngagementCreate,
-    EngagementOut,
+    EngagementResponse,
     EngagementUpdate,
-    ScopeOut,
-    ScopePut,
+    ScopeUpdate,
     TargetCreate,
+    TargetResponse,
 )
-from anomaly_api.schemas.finding import FindingCreate, FindingOut
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
 
-def _eng_out(eng: Engagement) -> EngagementOut:
-    return EngagementOut(
-        id=str(eng.id),
-        name=eng.name,
-        mode=eng.mode.value,
-        status=eng.status.value,
-        client_name=eng.client_name,
-    )
-
-
-@router.get("", response_model=list[EngagementOut])
-async def list_engagements(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[EngagementOut]:
-    if await is_admin(current_user, db):
-        rows = await db.scalars(select(Engagement))
+@router.get("", response_model=list[EngagementResponse])
+async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, offset: int = 0):
+    if any(r.name == RoleName.admin for r in user.roles):
+        engagements = (await db.scalars(select(Engagement).offset(offset).limit(limit))).all()
     else:
-        rows = await db.scalars(
-            select(Engagement)
-            .join(EngagementMember, EngagementMember.engagement_id == Engagement.id)
-            .where(EngagementMember.user_id == current_user.id)
-        )
-    return [_eng_out(r) for r in rows]
+        members = (
+            await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))
+        ).all()
+        eng_ids = [m.engagement_id for m in members]
+        if not eng_ids:
+            return []
+        engagements = (
+            await db.scalars(
+                select(Engagement).where(Engagement.id.in_(eng_ids)).offset(offset).limit(limit)
+            )
+        ).all()
+    return [EngagementResponse.model_validate(e) for e in engagements]
 
 
-@router.post("", response_model=EngagementOut, status_code=201)
-async def create_engagement(
-    body: EngagementCreate,
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> EngagementOut:
-    if not await is_admin(current_user, db):
-        raise HTTPException(status_code=403, detail="Admin required")
-    try:
-        mode = EngagementMode(body.mode)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid mode") from exc
-    eng = Engagement(
-        name=body.name,
-        mode=mode,
-        owner_id=current_user.id,
-        client_name=body.client_name,
-        rules_of_engagement=body.rules_of_engagement,
+@router.post("", response_model=EngagementResponse, status_code=status.HTTP_201_CREATED)
+async def create_engagement(payload: EngagementCreate, user: CurrentUser, db: DbSession):
+    engagement = Engagement(
+        name=payload.name,
+        mode=EngagementMode(payload.mode),
+        owner_id=user.id,
     )
-    db.add(eng)
+    db.add(engagement)
     await db.flush()
+    scope = Scope(engagement_id=engagement.id)
+    db.add(scope)
+    db.add(EngagementMember(engagement_id=engagement.id, user_id=user.id, role=RoleName.admin))
     await AuditService.log(
-        db, current_user.id, "engagement.create", "engagement", eng.id, eng.id, {"name": eng.name}
+        actor_id=user.id,
+        action="engagement.create",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        metadata={"name": engagement.name},
+        db=db,
     )
     await db.commit()
-    return _eng_out(eng)
+    await db.refresh(engagement)
+    return EngagementResponse.model_validate(engagement)
 
 
-@router.get("/{engagement_id}", response_model=EngagementOut)
+@router.get("/{engagement_id}", response_model=EngagementResponse)
 async def get_engagement(
-    eng: Annotated[Engagement, Depends(require_engagement_access("client_viewer"))],
-) -> EngagementOut:
-    return _eng_out(eng)
+    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id"))],
+):
+    return EngagementResponse.model_validate(engagement)
 
 
-@router.patch("/{engagement_id}", response_model=EngagementOut)
+@router.patch("/{engagement_id}", response_model=EngagementResponse)
 async def update_engagement(
-    body: EngagementUpdate,
-    eng: Annotated[Engagement, Depends(require_engagement_access("pentester"))],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> EngagementOut:
-    if body.name is not None:
-        eng.name = body.name
-    if body.status is not None:
-        try:
-            eng.status = EngagementStatus(body.status)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="Invalid status") from exc
-    if body.client_name is not None:
-        eng.client_name = body.client_name
-    if body.rules_of_engagement is not None:
-        eng.rules_of_engagement = body.rules_of_engagement
+    payload: EngagementUpdate,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
+    user: CurrentUser,
+    db: DbSession,
+):
+    update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data:
+        engagement.name = update_data["name"]
+    if "status" in update_data:
+        engagement.status = EngagementStatus(update_data["status"])
+    if "mode" in update_data:
+        engagement.mode = EngagementMode(update_data["mode"])
+    if "client_name" in update_data:
+        engagement.client_name = update_data["client_name"]
+    if "rules_of_engagement" in update_data:
+        engagement.rules_of_engagement = update_data["rules_of_engagement"]
     await AuditService.log(
-        db, current_user.id, "engagement.update", "engagement", eng.id, eng.id, {}
+        actor_id=user.id,
+        action="engagement.update",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        metadata=update_data,
+        db=db,
     )
     await db.commit()
-    await db.refresh(eng)
-    return _eng_out(eng)
+    await db.refresh(engagement)
+    return EngagementResponse.model_validate(engagement)
 
 
-@router.delete("/{engagement_id}", status_code=204)
+@router.delete("/{engagement_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_engagement(
-    eng: Annotated[Engagement, Depends(require_engagement_access("pentester"))],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> Response:
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.admin))
+    ],
+    user: CurrentUser,
+    db: DbSession,
+):
     await AuditService.log(
-        db, current_user.id, "engagement.delete", "engagement", eng.id, eng.id, {}
+        actor_id=user.id,
+        action="engagement.delete",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        metadata={},
+        db=db,
     )
-    await db.delete(eng)
+    await db.delete(engagement)
     await db.commit()
-    return Response(status_code=204)
+    return None
 
 
-@router.get("/{engagement_id}/scope", response_model=ScopeOut)
-async def get_scope(
-    eng: Annotated[Engagement, Depends(require_engagement_access("client_viewer"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> ScopeOut:
-    scope = await db.scalar(select(Scope).where(Scope.engagement_id == eng.id))
+@router.put("/{engagement_id}/scope")
+async def update_scope(
+    payload: ScopeUpdate,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
+    db: DbSession,
+):
+    scope = engagement.scope
     if scope is None:
-        return ScopeOut()
-    entries = await db.scalars(select(ScopeEntry).where(ScopeEntry.scope_id == scope.id))
-    ins: list[str] = []
-    outs: list[str] = []
-    for e in entries:
-        (ins if e.kind == "in" else outs).append(e.target_value)
-    return ScopeOut(notes=scope.notes, in_scope=ins, out_of_scope=outs)
-
-
-@router.put("/{engagement_id}/scope", response_model=ScopeOut)
-async def put_scope(
-    body: ScopePut,
-    eng: Annotated[Engagement, Depends(require_engagement_access("pentester"))],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> ScopeOut:
-    scope = await db.scalar(select(Scope).where(Scope.engagement_id == eng.id))
-    if scope is None:
-        scope = Scope(engagement_id=eng.id, notes=body.notes)
+        scope = Scope(engagement_id=engagement.id)
         db.add(scope)
         await db.flush()
-    else:
-        scope.notes = body.notes
-        existing = await db.scalars(select(ScopeEntry).where(ScopeEntry.scope_id == scope.id))
-        for e in existing:
-            await db.delete(e)
-        await db.flush()
-    for v in body.in_scope:
-        db.add(ScopeEntry(scope_id=scope.id, kind="in", target_value=v))
-    for v in body.out_of_scope:
-        db.add(ScopeEntry(scope_id=scope.id, kind="out", target_value=v))
-    await AuditService.log(db, current_user.id, "scope.update", "scope", scope.id, eng.id, {})
+    # Remove existing entries
+    for entry in list(getattr(scope, "entries", [])):
+        await db.delete(entry)
+    await db.flush()
+    for e in payload.entries:
+        kind = ScopeEntryKind.in_ if e.kind == "in" else ScopeEntryKind.out
+        entry = ScopeEntry(scope_id=scope.id, kind=kind, target_value=e.target_value)
+        db.add(entry)
     await db.commit()
-    return ScopeOut(notes=scope.notes, in_scope=body.in_scope, out_of_scope=body.out_of_scope)
+    return {"status": "ok"}
 
 
-@router.post("/{engagement_id}/targets", status_code=201)
+@router.post(
+    "/{engagement_id}/targets", response_model=TargetResponse, status_code=status.HTTP_201_CREATED
+)
 async def add_target(
-    body: TargetCreate,
-    eng: Annotated[Engagement, Depends(require_engagement_access("pentester"))],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> dict[str, Any]:
+    payload: TargetCreate,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
+    db: DbSession,
+    user: CurrentUser,
+):
     target = Target(
-        engagement_id=eng.id,
-        value=body.value,
-        type=body.type,
-        status=body.status,
-        discovered=body.discovered,
+        engagement_id=engagement.id,
+        value=payload.value,
+        type=TargetType(payload.type),
     )
     db.add(target)
-    await db.flush()
-    await AuditService.log(db, current_user.id, "target.create", "target", target.id, eng.id, {})
-    await db.commit()
-    return {"id": str(target.id), "value": target.value, "type": target.type}
-
-
-@router.get("/{engagement_id}/findings")
-async def list_engagement_findings(
-    eng: Annotated[Engagement, Depends(require_engagement_access("client_viewer"))],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[dict[str, Any]]:
-    rows = await db.scalars(select(Finding).where(Finding.engagement_id == eng.id))
-    return [
-        {
-            "id": str(r.id),
-            "engagement_id": str(r.engagement_id),
-            "title": r.title,
-            "severity": r.severity.value,
-            "status": r.status.value,
-            "description": r.description,
-        }
-        for r in rows
-    ]
-
-
-@router.post("/{engagement_id}/findings", response_model=FindingOut, status_code=201)
-async def create_finding(
-    body: FindingCreate,
-    eng: Annotated[Engagement, Depends(require_engagement_access("pentester"))],
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-) -> FindingOut:
-    try:
-        severity = FindingSeverity(body.severity)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="Invalid severity") from exc
-    finding = Finding(
-        engagement_id=eng.id,
-        title=body.title,
-        severity=severity,
-        status=FindingStatus.NEW,
-        description=body.description,
-        remediation=body.remediation,
-        reporter_id=current_user.id,
-        target_id=UUID(body.target_id) if body.target_id else None,
-        fingerprint=f"{eng.id}:{body.title}",
+    await AuditService.log(
+        actor_id=user.id,
+        action="target.add",
+        resource_type="target",
+        resource_id=target.id,
+        engagement_id=engagement.id,
+        metadata={"value": payload.value, "type": payload.type},
+        db=db,
     )
-    db.add(finding)
-    await db.flush()
-    await AuditService.log(db, current_user.id, "finding.create", "finding", finding.id, eng.id, {})
     await db.commit()
-    await db.refresh(finding)
-    return FindingOut(
-        id=str(finding.id),
-        engagement_id=str(finding.engagement_id),
-        title=finding.title,
-        severity=finding.severity.value,
-        status=finding.status.value,
-        description=finding.description,
-    )
+    await db.refresh(target)
+    return TargetResponse.model_validate(target)

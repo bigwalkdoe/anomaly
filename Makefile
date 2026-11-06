@@ -16,4 +16,4 @@ typecheck:
 	mypy packages apps
 
 migrate:
-	alembic -c packages/core/alembic.ini upgrade head
+	cd packages/core && alembic upgrade head

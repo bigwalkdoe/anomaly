@@ -1,66 +1,28 @@
-from unittest.mock import MagicMock, patch
+from __future__ import annotations
 
 import pytest
 from anomaly_core.runner import DockerRunner, FakeRunner, RunResult, RunSpec
 
 
 @pytest.mark.asyncio
-async def test_fake_runner_records_and_returns():
-    runner = FakeRunner(
-        result=RunResult(exit_code=0, stdout="ok", stderr="", artifacts=[], duration_s=1.0)
-    )
-    spec = RunSpec(
-        tool="stub",
-        image="img",
-        target_values=["example.com"],
-        params={},
-        env={},
-        timeout_s=30,
-        network="net",
-        resource_limits={"mem": "128m"},
-    )
-    result = await runner.run(spec)
-    assert result.exit_code == 0
-    assert runner.specs == [spec]
+async def test_fake_runner_records_spec_and_returns_result():
+    runner = FakeRunner(result=RunResult(exit_code=0, stdout="ok"))
+    spec = RunSpec(tool="nmap", image="anomaly-runner:dev", target_values=["example.com"])
+    res = await runner.run(spec)
+    assert res.exit_code == 0
+    assert runner.specs[0].tool == "nmap"
 
 
-@pytest.mark.asyncio
-async def test_docker_runner_builds_args():
-    runner = DockerRunner()
-    spec = RunSpec(
-        tool="stub",
-        image="anomaly-runner:dev",
-        target_values=["example.com"],
-        params={"k": "v"},
-        env={"A": "B"},
-        timeout_s=60,
-        network="anomaly-net",
-        resource_limits={"mem_limit": "256m", "cpu_period": 100000, "cpu_quota": 50000},
-    )
-    mock_client = MagicMock()
-    mock_container = MagicMock()
-    mock_container.wait.return_value = {"StatusCode": 0}
-    mock_container.logs.return_value = b"output"
-    mock_client.containers.run.return_value = mock_container
-    with patch("anomaly_core.runner.docker.from_env", return_value=mock_client):
-        result = await runner.run(spec)
-    assert result.exit_code == 0
-    kwargs = mock_client.containers.run.call_args.kwargs
-    assert kwargs["image"] == "anomaly-runner:dev"
-    assert kwargs["network"] == "anomaly-net"
-    assert kwargs.get("privileged") is not True
-    assert kwargs.get("mem_limit") == "256m"
-
-
-def test_runspec_accepts_optional_command():
+def test_docker_runner_builds_correct_args():
+    runner = DockerRunner(network="anomaly-net")
     spec = RunSpec(
         tool="nmap",
-        image="img",
-        target_values=["x"],
-        params={},
-        env={},
-        timeout_s=1,
-        network="n",
-        command=["nmap", "-sS", "x"],
+        image="anomaly-runner:dev",
+        target_values=["example.com"],
+        env={"FOO": "bar"},
+        resource_limits={"mem_limit": "512m", "cpu_period": 100000, "cpu_quota": 50000},
     )
-    assert spec.command == ["nmap", "-sS", "x"]
+    args = runner._build_args(spec)
+    assert args["network"] == "anomaly-net"
+    assert args["privileged"] is False
+    assert args["mem_limit"] == "512m"
