@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils";
 
 interface EmptyStateProps {
   icon?: React.ReactNode;
@@ -18,16 +17,16 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted/50 text-muted-foreground mb-4">
-        {icon}
-      </div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      {description && (
-        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-      )}
-      {action && (
-        <div className="mt-6">{action}</div>
-      )}
+      {icon ? (
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground [&_svg]:h-5 [&_svg]:w-5">
+          {icon}
+        </div>
+      ) : null}
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      {description ? (
+        <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">{description}</p>
+      ) : null}
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }
