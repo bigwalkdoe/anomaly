@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from anomaly_tools.base import Tool
 
 
@@ -15,3 +17,8 @@ class ToolRegistry:
 
     def list_tools(self) -> list[str]:
         return list(self._tools.keys())
+
+
+# Compat aliases for legacy callers; thin wrappers over the registry model.
+TOOL_REGISTRY = ToolRegistry()
+TOOL_DEFS: dict[str, Any] = {}

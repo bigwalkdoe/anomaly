@@ -7,7 +7,7 @@ from .httpx import HttpxTool
 from .nmap import NmapTool
 from .nuclei import NucleiTool
 from .recon import ReconTool
-from .registry import ToolRegistry
+from .registry import TOOL_DEFS, TOOL_REGISTRY, ToolRegistry
 from .sqlmap import SqlmapTool
 from .stub import StubTool, stub_tool
 
@@ -17,6 +17,8 @@ __all__ = [
     "ToolResult",
     "ToolSpec",
     "ToolRegistry",
+    "TOOL_REGISTRY",
+    "TOOL_DEFS",
     "stub_tool",
     "StubTool",
     "get_default_registry",
