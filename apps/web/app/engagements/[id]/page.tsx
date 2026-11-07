@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
@@ -74,7 +74,7 @@ function EngagementDetailContent() {
   const [error, setError] = useState<string | null>(null);
   const [creatingRun, setCreatingRun] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setError(null);
     try {
       const [eng, findingsData, runsData] = await Promise.all([
@@ -91,11 +91,11 @@ function EngagementDetailContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [engagementId]);
 
   useEffect(() => {
     void fetchData();
-  }, [engagementId]);
+  }, [fetchData]);
 
   const handleCreateRun = async () => {
     setCreatingRun(true);

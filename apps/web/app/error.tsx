@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { AlertCircle } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 
@@ -31,7 +32,7 @@ export default function Error({
         <div className="mt-6 flex items-center justify-center gap-3">
           <Button onClick={reset}>Try again</Button>
           <Button variant="outline" asChild>
-            <a href="/">Dashboard</a>
+            <Link href="/">Dashboard</Link>
           </Button>
         </div>
       </div>
