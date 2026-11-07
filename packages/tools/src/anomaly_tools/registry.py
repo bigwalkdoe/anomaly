@@ -19,6 +19,33 @@ class ToolRegistry:
         return list(self._tools.keys())
 
 
+def get_default_registry() -> ToolRegistry:
+    """Return a populated registry. Canonical factory for tool resolution."""
+    # Local imports avoid import cycles and keep registry lightweight to import.
+    from anomaly_tools.ffuf import FfufTool
+    from anomaly_tools.httpx import HttpxTool
+    from anomaly_tools.nmap import NmapTool
+    from anomaly_tools.nuclei import NucleiTool
+    from anomaly_tools.recon import ReconTool
+    from anomaly_tools.sqlmap import SqlmapTool
+    from anomaly_tools.stub import StubTool
+
+    reg = ToolRegistry()
+    for tool in [
+        StubTool(),
+        NmapTool(),
+        HttpxTool(),
+        ReconTool(),
+        NucleiTool(),
+        FfufTool(),
+        SqlmapTool(),
+    ]:
+        reg.register(tool)
+    return reg
+
+
 # Compat aliases for legacy callers; thin wrappers over the registry model.
+# TOOL_REGISTRY is intentionally left unpopulated to avoid side effects on import;
+# use get_default_registry() for a populated registry.
 TOOL_REGISTRY = ToolRegistry()
 TOOL_DEFS: dict[str, Any] = {}

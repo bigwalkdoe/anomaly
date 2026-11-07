@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from types import SimpleNamespace
 from typing import Any
 
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
@@ -100,12 +99,13 @@ class NmapTool:
 
 def parse_nmap_xml(
     xml_text: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
-) -> SimpleNamespace:
+) -> ToolResult:
+    """Legacy/compat parser returning ToolResult with parsed_findings (dicts) and discovered_targets."""
     findings: list[dict[str, Any]] = []
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        return SimpleNamespace(
+        return ToolResult(
             stdout=xml_text,
             stderr=str(exc),
             exit_code=1,
@@ -156,7 +156,7 @@ def parse_nmap_xml(
                     },
                 }
             )
-    return SimpleNamespace(
+    return ToolResult(
         stdout=xml_text,
         stderr="",
         exit_code=0,
