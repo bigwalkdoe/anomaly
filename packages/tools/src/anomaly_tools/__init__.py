@@ -1,13 +1,10 @@
-import contextlib
-from typing import cast
-
 from .base import FindingDraft, Tool, ToolResult, ToolSpec
 from .ffuf import FfufTool
 from .httpx import HttpxTool
 from .nmap import NmapTool
 from .nuclei import NucleiTool
 from .recon import ReconTool
-from .registry import TOOL_DEFS, TOOL_REGISTRY, ToolRegistry
+from .registry import TOOL_DEFS, TOOL_REGISTRY, ToolRegistry, get_default_registry
 from .sqlmap import SqlmapTool
 from .stub import StubTool, stub_tool
 
@@ -22,15 +19,10 @@ __all__ = [
     "stub_tool",
     "StubTool",
     "get_default_registry",
+    "NmapTool",
+    "HttpxTool",
+    "ReconTool",
+    "NucleiTool",
+    "FfufTool",
+    "SqlmapTool",
 ]
-
-
-def get_default_registry() -> ToolRegistry:
-    reg = ToolRegistry()
-    for cls in [StubTool, NmapTool, HttpxTool, ReconTool, NucleiTool, FfufTool, SqlmapTool]:
-        with contextlib.suppress(Exception):
-            reg.register(cast(Tool, cls()))
-    return reg
-
-
-__all__.extend(["NmapTool", "HttpxTool", "ReconTool", "NucleiTool", "FfufTool", "SqlmapTool"])
