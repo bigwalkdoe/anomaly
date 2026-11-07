@@ -16,7 +16,9 @@ async def test_protected_endpoint_requires_authentication(client):
 @pytest.mark.asyncio
 async def test_invalid_token_rejected(client):
     """Requests with invalid tokens should be rejected."""
-    response = await client.get("/api/engagements", headers={"Authorization": "Bearer invalid-token"})
+    response = await client.get(
+        "/api/engagements", headers={"Authorization": "Bearer invalid-token"}
+    )
     assert response.status_code in (401, 403)
 
 
