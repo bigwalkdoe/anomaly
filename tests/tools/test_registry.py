@@ -1,22 +1,26 @@
-from __future__ import annotations
-
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
 from anomaly_tools.registry import ToolRegistry
 
 
-def test_registry_register_and_get():
-    class Dummy:
-        name = "dummy"
-        supported_target_types = ["domain"]
+class Dummy:
+    name = "dummy"
+    supported_target_types = ["domain"]
 
-        def build_cmd(self, spec: ToolSpec):
-            return ["echo", spec.targets[0] if spec.targets else ""]
+    def build_cmd(self, spec: ToolSpec):
+        return ["echo", spec.targets[0] if spec.targets else ""]
 
-        def parse(self, stdout: str):
-            return ToolResult(findings=[FindingDraft(title="test")], raw=stdout)
+    def parse(self, stdout: str):
+        return ToolResult(findings=[FindingDraft(title="t")], raw=stdout, discovered_targets=[])
 
+
+def test_registry_register_get_list():
     reg = ToolRegistry()
-    tool = Dummy()
-    reg.register(tool)
-    assert reg.get("dummy") is tool
+    d = Dummy()
+    reg.register(d)
+    assert reg.get("dummy") is d
     assert "dummy" in reg.list_tools()
+
+
+def test_toolresult_has_discovered_targets():
+    r = ToolResult(findings=[], discovered_targets=[{"value": "https://a.example", "type": "url"}])
+    assert r.discovered_targets[0]["value"] == "https://a.example"
