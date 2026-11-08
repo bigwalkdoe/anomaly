@@ -86,12 +86,16 @@ class NmapTool:
                         title=f"Open port: {line}",
                         severity="info",
                         description=line,
+                        metadata={"fingerprint": f"nmap:text:{line}"},
                     )
                 )
         if not findings:
             findings.append(
                 FindingDraft(
-                    title="nmap scan completed", severity="info", description="Scan completed"
+                    title="nmap scan completed",
+                    severity="info",
+                    description="Scan completed",
+                    metadata={"fingerprint": "nmap:scan-completed"},
                 )
             )
         return ToolResult(findings=findings, raw=stdout)
