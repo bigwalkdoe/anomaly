@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from typing import Any
 
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
@@ -59,7 +58,8 @@ class NucleiTool:
 
 def parse_nuclei_output(
     output: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
-) -> SimpleNamespace:
+) -> ToolResult:
+    """Legacy/compat parser returning ToolResult with parsed_findings (dicts) and discovered_targets."""
     findings: list[dict[str, Any]] = []
     for line in (output or "").splitlines():
         line = line.strip()
@@ -86,7 +86,7 @@ def parse_nuclei_output(
                 "metadata": {"template_id": template_id, "host": host, "matched_at": matched},
             }
         )
-    return SimpleNamespace(
+    return ToolResult(
         stdout=output or "",
         stderr="",
         exit_code=0,

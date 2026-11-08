@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from typing import Any
 
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
@@ -37,12 +36,13 @@ class FfufTool:
 
 def parse_ffuf_json(
     output: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
-) -> SimpleNamespace:
+) -> ToolResult:
+    """Legacy/compat parser returning ToolResult with parsed_findings (dicts) and discovered_targets."""
     findings: list[dict[str, Any]] = []
     try:
         data = json.loads(output)
     except json.JSONDecodeError as exc:
-        return SimpleNamespace(
+        return ToolResult(
             stdout=output,
             stderr=str(exc),
             exit_code=1,
@@ -72,7 +72,7 @@ def parse_ffuf_json(
                 "metadata": {"url": url, "status": status, "length": length},
             }
         )
-    return SimpleNamespace(
+    return ToolResult(
         stdout=output,
         stderr="",
         exit_code=0,

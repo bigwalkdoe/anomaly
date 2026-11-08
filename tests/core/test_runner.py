@@ -4,6 +4,21 @@ import pytest
 from anomaly_core.runner import DockerRunner, FakeRunner, RunResult, RunSpec
 
 
+def test_runspec_accepts_optional_command():
+    spec = RunSpec(
+        tool="nmap",
+        image="anomaly-runner:dev",
+        target_values=["example.com"],
+        command=["nmap", "-sV", "example.com"],
+    )
+    assert spec.command == ["nmap", "-sV", "example.com"]
+
+
+def test_runspec_command_defaults_to_none():
+    spec = RunSpec(tool="nmap", image="anomaly-runner:dev", target_values=["example.com"])
+    assert spec.command is None
+
+
 @pytest.mark.asyncio
 async def test_fake_runner_records_spec_and_returns_result():
     runner = FakeRunner(result=RunResult(exit_code=0, stdout="ok"))
