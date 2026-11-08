@@ -1,68 +1,156 @@
+from __future__ import annotations
+
+import os
+import uuid
+
 from locust import HttpUser, between, task
+
+# Optional pre-provisioned account. Registration is admin-only once the first
+# user exists, so a real load run should set these (or run against an empty DB).
+SHARED_EMAIL = os.getenv("ANOMALY_LOAD_EMAIL", "")
+SHARED_PASSWORD = os.getenv("ANOMALY_LOAD_PASSWORD", "")
 
 
 class AnomalyUser(HttpUser):
-    wait_time = between(1, 3)
-    token = None
+    """Exercises the authenticated read/write paths a pentester uses day to day.
 
-    def on_start(self):
-        """Authenticate user at the start of each test."""
-        email = f"user{self.user_id}@example.com"
-        password = "password123"
-        
-        # Try to register (may fail if user exists)
-        self.client.post(
+    Run creation is deliberately excluded: enqueuing a run spawns a real
+    container, which is not something a load test should trigger.
+    """
+
+    wait_time = between(1, 3)
+    token: str | None = None
+    engagement_id: str | None = None
+    finding_id: str | None = None
+
+    def on_start(self) -> None:
+        self.token = None
+        self.engagement_id = None
+        self.finding_id = None
+        self._authenticate()
+        if self.token:
+            self._create_engagement()
+
+    # -- helpers ---------------------------------------------------------
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
+
+    def _json_headers(self) -> dict[str, str]:
+        return {**self._headers(), "Content-Type": "application/json"}
+
+    def _authenticate(self) -> None:
+        email = f"load-{uuid.uuid4().hex[:12]}@example.com"
+        password = "loadtest-password-123"
+
+        resp = self.client.post(
             "/api/auth/register",
-            json={
-                "email": email,
-                "name": f"User{self.user_id}",
-                "password": password,
-            },
+            json={"email": email, "name": email, "password": password},
         )
-        
-        # Login
+        if resp.status_code == 201:
+            self.token = resp.json().get("access_token")
+            return
+
+        if not SHARED_EMAIL:
+            return
         resp = self.client.post(
             "/api/auth/login",
-            json={"email": email, "password": password},
+            json={"email": SHARED_EMAIL, "password": SHARED_PASSWORD},
         )
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("mfa_required"):
-                # MFA enabled - skip for load testing
-                self.token = None
-            else:
-                self.token = data.get("access_token")
+        if resp.status_code == 200 and not resp.json().get("mfa_required"):
+            self.token = resp.json().get("access_token")
 
-    def _get_headers(self):
-        headers = {}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-        return headers
+    def _create_engagement(self) -> None:
+        resp = self.client.post(
+            "/api/engagements",
+            headers=self._json_headers(),
+            json={"name": f"Load {uuid.uuid4().hex[:8]}", "mode": "own_infra"},
+            name="/api/engagements [create]",
+        )
+        if resp.status_code == 201:
+            self.engagement_id = resp.json().get("id")
 
-    @task(3)
-    def list_engagements(self):
-        self.client.get("/api/engagements", headers=self._get_headers())
-
-    @task(3)
-    def list_findings(self):
-        self.client.get("/api/search?q=", headers=self._get_headers())
-
-    @task(2)
-    def list_runs(self):
-        self.client.get("/api/runs?limit=100", headers=self._get_headers())
-
-    @task(2)
-    def dashboard(self):
-        self.client.get("/api/dashboard", headers=self._get_headers())
+    # -- tasks -----------------------------------------------------------
 
     @task(1)
-    def health(self):
+    def health(self) -> None:
         self.client.get("/api/health")
 
     @task(1)
-    def metrics(self):
+    def metrics(self) -> None:
         self.client.get("/api/metrics")
 
+    @task(3)
+    def list_engagements(self) -> None:
+        self.client.get("/api/engagements", headers=self._headers())
+
+    @task(2)
+    def get_engagement(self) -> None:
+        if not self.engagement_id:
+            return
+        self.client.get(
+            f"/api/engagements/{self.engagement_id}",
+            headers=self._headers(),
+            name="/api/engagements/[id]",
+        )
+
+    @task(2)
+    def list_findings(self) -> None:
+        if not self.engagement_id:
+            return
+        self.client.get(
+            f"/api/engagements/{self.engagement_id}/findings",
+            headers=self._headers(),
+            name="/api/engagements/[id]/findings",
+        )
+
     @task(1)
-    def list_notifications(self):
-        self.client.get("/api/notifications", headers=self._get_headers())
+    def create_finding(self) -> None:
+        if not self.engagement_id:
+            return
+        resp = self.client.post(
+            f"/api/engagements/{self.engagement_id}/findings",
+            headers=self._json_headers(),
+            json={
+                "title": f"Load finding {uuid.uuid4().hex[:8]}",
+                "severity": "low",
+                "description": "Generated by the load test",
+            },
+            name="/api/engagements/[id]/findings [create]",
+        )
+        if resp.status_code == 201:
+            self.finding_id = resp.json().get("id")
+
+    @task(1)
+    def get_finding(self) -> None:
+        if not self.finding_id:
+            return
+        self.client.get(
+            f"/api/findings/{self.finding_id}",
+            headers=self._headers(),
+            name="/api/findings/[id]",
+        )
+
+    @task(2)
+    def list_runs(self) -> None:
+        if not self.engagement_id:
+            return
+        self.client.get(
+            f"/api/engagements/{self.engagement_id}/runs",
+            headers=self._headers(),
+            name="/api/engagements/[id]/runs",
+        )
+
+    @task(1)
+    def search(self) -> None:
+        if not self.token:
+            return
+        self.client.get(
+            "/api/search",
+            params={"q": "load"},
+            headers=self._headers(),
+        )
+
+    @task(1)
+    def dashboard(self) -> None:
+        self.client.get("/api/dashboard", headers=self._headers())
