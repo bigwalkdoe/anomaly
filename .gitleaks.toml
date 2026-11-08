@@ -1,0 +1,17 @@
+# Gitleaks configuration for anomaly
+# Allows known-safe example placeholders; real secrets must never be committed.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow dev/example placeholders only in tracked example files"
+paths = [
+  '''\.env\.example$''',
+  '''apps/web/\.env\.example$''',
+]
+commits = []
+regexTarget = "match"
+regexes = [
+  '''dev-only-change-me-[0-9a-fA-F]+''',
+]

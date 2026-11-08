@@ -21,12 +21,19 @@ env/
 
 # env / secrets
 .env
+.env.*
+!.env.example
+!.env.*.example
 *.db
+secrets/
+secrets.*
+*.pem
+*.key
+*.p12
+*.pfx
 
 # node
 .next/
 node_modules/
 *.tsbuildinfo
-.env
-secrets/
 .superpowers/
