@@ -128,3 +128,81 @@ async def test_ai_service_complete_still_works_with_mock_provider():
     svc = AIService(provider=Fake())
     resp = await svc.complete([AIMessage(role="user", content="test")])
     assert resp.content == "ok"
+
+import json
+from types import SimpleNamespace
+
+
+class CapturingProvider:
+    name = "fake"
+    model = "fake-model"
+
+    def __init__(self, content: str):
+        self.content = content
+        self.calls = []
+
+    async def complete(self, messages, **kwargs):
+        self.calls.append(messages)
+        from anomaly_ai.providers import AIResponse
+        return AIResponse(content=self.content, model=self.model, usage={"prompt_tokens": 1, "completion_tokens": 2})
+
+
+@pytest.mark.asyncio
+async def test_suggest_tools_parses_structured_json():
+    payload = {
+        "suggestions": [
+            {"tool": "nmap", "reason": "port scan", "targets_hint": "10.0.0.1", "params": {"top_ports": 100}, "priority": "high"}
+        ],
+        "notes": "start here",
+    }
+    provider = CapturingProvider("```json\n" + json.dumps(payload) + "\n```")
+    svc = AIService(provider=provider)
+    result = await svc.suggest_tools("scan the host", context={"target": "10.0.0.1"})
+
+    assert result["parse_success"] is True
+    assert result["raw"] is None
+    assert result["notes"] == "start here"
+    assert result["suggestions"][0]["tool"] == "nmap"
+    assert result["provider"] == "fake"
+    assert result["model"] == "fake-model"
+    # prompt should include objective and some known tool names
+    sent = "\n".join(m.content for m in provider.calls[0])
+    assert "scan the host" in sent
+    assert "nmap" in sent
+
+
+@pytest.mark.asyncio
+async def test_suggest_tools_falls_back_on_invalid_json():
+    provider = CapturingProvider("I suggest using nmap first.")
+    svc = AIService(provider=provider)
+    result = await svc.suggest_tools("scan the host")
+
+    assert result["parse_success"] is False
+    assert result["suggestions"] == []
+    assert result["raw"] == "I suggest using nmap first."
+
+
+@pytest.mark.asyncio
+async def test_suggest_tools_logs_audit(monkeypatch):
+    payload = {"suggestions": [{"tool": "nmap", "reason": "scan"}], "notes": ""}
+    provider = CapturingProvider(json.dumps(payload))
+    logs = []
+
+    async def fake_log(*, actor_id, action, resource_type, resource_id, engagement_id, metadata, db):
+        logs.append({
+            "actor_id": actor_id, "action": action, "resource_type": resource_type,
+            "resource_id": resource_id, "engagement_id": engagement_id, "metadata": metadata, "db": db,
+        })
+
+    monkeypatch.setattr("anomaly_ai.service.AuditService.log", fake_log)
+    svc = AIService(provider=provider, db=object())
+    result = await svc.suggest_tools("scan", actor_id="u1", engagement_id="e1")
+
+    assert result["parse_success"] is True
+    assert logs, "expected audit log call"
+    assert logs[-1]["action"] == "ai.suggest_tools"
+    md = logs[-1]["metadata"]
+    assert md["provider"] == "fake"
+    assert md["model"] == "fake-model"
+    assert md["parse_success"] is True
+    assert md["suggestion_count"] == 1
