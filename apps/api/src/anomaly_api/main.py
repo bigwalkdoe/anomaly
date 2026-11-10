@@ -41,6 +41,7 @@ from anomaly_api.routers import (
     webhooks,
     ws,
 )
+from anomaly_api.routers import v1_slice
 
 tags_metadata = [
     {
@@ -184,3 +185,4 @@ app.include_router(schedules.router)
 app.include_router(reports.router)
 app.include_router(vulnerabilities.router)
 app.include_router(ai.router)
+app.include_router(v1_slice.router)
