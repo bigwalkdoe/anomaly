@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from anomaly_core.models import Engagement, Evidence, Finding, Run
+from anomaly_core.rbac import engagement_accessible
 from anomaly_reporting import ReportGenerator
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
@@ -21,6 +22,8 @@ async def generate_report(
 ) -> dict[str, object]:
     engagement = await db.get(Engagement, engagement_id)
     if engagement is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if not await engagement_accessible(db, user, engagement):
         raise HTTPException(status_code=404, detail="Engagement not found")
 
     findings = (

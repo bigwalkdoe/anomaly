@@ -67,6 +67,8 @@ async def upload_file(
 
     # Create evidence record
     ev = Evidence(
+        organization_id=getattr(engagement, "organization_id", None),
+        engagement_id=engagement.id,
         run_id=None,
         type=EvidenceType.log,
         storage_key=f"{bucket_name}/{object_name}",
@@ -83,6 +85,7 @@ async def upload_file(
         resource_type="evidence",
         resource_id=ev.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"filename": file.filename},
         db=db,
     )

@@ -4,8 +4,9 @@ import uuid
 from uuid import UUID
 
 from anomaly_core.db import SessionLocal
-from anomaly_core.models import Run, User
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from anomaly_core.models import Engagement, Run, User
+from anomaly_core.rbac import engagement_accessible
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from anomaly_api.deps import CurrentUser, DbSession
 
@@ -78,7 +79,38 @@ notification_manager = NotificationManager()
 async def run_websocket(
     websocket: WebSocket,
     run_id: str,
+    token: str | None = None,
 ):
+    if token is None:
+        await websocket.close(code=4001, reason="Missing token")
+        return
+    from anomaly_core.auth import decode_token
+
+    try:
+        payload = decode_token(token)
+        if payload.type != "access":
+            await websocket.close(code=4001, reason="Invalid token type")
+            return
+        user_id = uuid.UUID(payload.sub)
+        rid = UUID(str(run_id))
+    except Exception:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    async with SessionLocal() as db:
+        user = await db.get(User, user_id)
+        if user is None or not user.is_active:
+            await websocket.close(code=4001, reason="User not found or inactive")
+            return
+        run = await db.get(Run, rid)
+        if run is None:
+            await websocket.close(code=4404, reason="Run not found")
+            return
+        engagement = await db.get(Engagement, run.engagement_id)
+        if engagement is None or not await engagement_accessible(db, user, engagement):
+            await websocket.close(code=4403, reason="Forbidden")
+            return
+
     await manager.connect(websocket, run_id)
     try:
         while True:
@@ -93,10 +125,13 @@ async def run_ws_status(run_id: str, user: CurrentUser, db: DbSession):
     try:
         rid = UUID(str(run_id))
     except ValueError:
-        return {"active": False, "connection_count": 0}
+        raise HTTPException(status_code=404, detail="Run not found") from None
     run = await db.get(Run, rid)
     if run is None:
-        return {"active": False, "connection_count": 0}
+        raise HTTPException(status_code=404, detail="Run not found")
+    engagement = await db.get(Engagement, run.engagement_id)
+    if engagement is None or not await engagement_accessible(db, user, engagement):
+        raise HTTPException(status_code=404, detail="Run not found")
     active = run_id in manager.active_connections and len(manager.active_connections[run_id]) > 0
     return {"active": active, "connection_count": len(manager.active_connections.get(run_id, []))}
 

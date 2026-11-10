@@ -174,3 +174,51 @@ async def add_member(
 
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     return await db.get(User, user_id)
+
+
+async def accessible_engagement_ids(
+    db: AsyncSession, user: User, min_role: RoleName = RoleName.client_viewer
+) -> set[uuid.UUID] | None:
+    """Return engagement IDs accessible to user, or None to indicate unrestricted access.
+
+    Unrestricted is only for users with global admin role when considering non-org-scoped
+    engagements; org-scoped engagements still require org membership and are filtered by
+    engagement_accessible semantics.
+    """
+    from anomaly_core.models.tenancy import Membership
+
+    if has_role(user, RoleName.admin):
+        # Admins can access all engagements in orgs they belong to, plus unscoped engagements.
+        org_rows = (
+            await db.scalars(
+                select(Membership.organization_id).where(Membership.user_id == user.id)
+            )
+        ).all()
+        org_ids = {oid for oid in org_rows if oid is not None}
+        q = select(Engagement.id).where(
+            (Engagement.organization_id.is_(None)) | (Engagement.organization_id.in_(org_ids))
+        )
+        ids = set((await db.scalars(q)).all())
+        return ids
+
+    member_rows = (
+        await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))
+    ).all()
+    allowed_by_role = {
+        m.engagement_id for m in member_rows if ROLE_RANK[m.role] >= ROLE_RANK[min_role]
+    }
+    if not allowed_by_role:
+        return set()
+
+    org_rows = (
+        await db.scalars(select(Membership.organization_id).where(Membership.user_id == user.id))
+    ).all()
+    org_ids = {oid for oid in org_rows if oid is not None}
+
+    q = select(Engagement.id, Engagement.organization_id).where(Engagement.id.in_(allowed_by_role))
+    rows = (await db.execute(q)).all()
+    allowed: set[uuid.UUID] = set()
+    for eng_id, org_id in rows:
+        if org_id is None or org_id in org_ids:
+            allowed.add(eng_id)
+    return allowed
