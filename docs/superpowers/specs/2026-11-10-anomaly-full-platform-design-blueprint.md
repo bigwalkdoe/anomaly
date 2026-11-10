@@ -783,7 +783,7 @@ The architecture decision records below finalize the architectural choices impli
 
 **Context:** JWT refresh rotation, TOTP MFA, lockout and basic RBAC partially exist, but only a small permission set is seeded and no resource-level policy engine exists.
 
-**Consequences:** A central policy decision point must be applied consistently to APIs, workers, WebSockets, evidence retrieval and report exports, and deny events must be auditable.
+**Consequences:** A central policy decision point must be applied consistently to APIs, workers, WebSockets, evidence retrieval and report exports, and deny events must be auditable; adopting it adds policy-evaluation latency and cross-cutting operational complexity to every authorization path. The adoption trade-off is centralized, consistent enforcement against added decision latency and integration burden across all authorization surfaces.
 
 **Migration impact:** Introduce the policy service/engine evaluating organization membership, resource ownership, engagement scope and requested permission; expand the permission set; retain current authentication mechanisms pending hardening.
 
