@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from typing import Any
+
+import defusedxml.ElementTree as ET
 
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
 

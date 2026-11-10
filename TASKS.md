@@ -22,8 +22,8 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
   - **Note:** CI-equivalent environment parity still depends on reproducible full-suite and service setup.
 
 - [ ] **Security & dependency CI jobs** *(in progress)*
-  - **Progress (2026-11-10):** `docker` runner image build succeeded. `gitleaks detect --source . --no-git --redact` reported **15 potential leaks**, triaged to ignored/local/generated paths only: local `.env` files (gitignored, untracked), `.worktrees/` `.env`, `.superpowers/` log, and Next.js `.next/` build artifacts (generated preview/encryption keys) — **no tracked source secrets identified**. Updated `.gitleaks.toml` allowlist to exclude these generated/local-only paths for filesystem scans; re-scan in progress/required for confirmation. `bandit`/`safety` CLI modules not installed locally.
-  - **Actions:** confirm clean gitleaks result with updated config, and run/triage `bandit`/`safety` in CI or with tools installed.
+  - **Progress (2026-11-10):** `docker` runner image build succeeded. `gitleaks` findings (15) triaged to ignored/local/generated paths; `.gitleaks.toml` updated and targeted rescans of flagged paths passed. `python3 -m bandit -r packages apps -q -f txt` reported **11 findings** (Low/Medium; e.g. XML parsing in `nmap`, broad exception handling, hardcoded-sql string in a migration, config placeholder). Hardened `packages/tools/src/anomaly_tools/nmap.py` to parse XML via `defusedxml.ElementTree`. `python3 -m safety check` failed in this environment due to a tool/runtime dependency error (Tenacity/httpx2 timeout type issue), so dependency CVE results are **unverified** here.
+  - **Actions:** re-run Bandit after hardening and triage/suppress/fix remaining findings; run Safety in CI or a healthy environment; confirm full gitleaks filesystem scan if desired.
   - **Done when:** jobs run clean or with documented, approved exceptions.
 
 - [x] **Runner image build validation**
