@@ -8,6 +8,7 @@ from anomaly_core.models import (
     EngagementMember,
     EngagementMode,
     EngagementStatus,
+    OrganizationMember,
     RoleName,
     Scope,
     ScopeEntry,
@@ -52,10 +53,32 @@ async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, o
 
 @router.post("", response_model=EngagementResponse, status_code=status.HTTP_201_CREATED)
 async def create_engagement(payload: EngagementCreate, user: CurrentUser, db: DbSession):
+    organization_id = payload.organization_id
+    if organization_id is not None:
+        # Allow if global admin or org member
+        is_global_admin = any(r.name == RoleName.admin for r in user.roles)
+        if not is_global_admin:
+            membership = await db.scalar(
+                select(OrganizationMember).where(
+                    OrganizationMember.organization_id == organization_id,
+                    OrganizationMember.user_id == user.id,
+                )
+            )
+            if membership is None:
+                organization_id = None
+    else:
+        # Best-effort default org for user (first membership)
+        membership = await db.scalar(
+            select(OrganizationMember).where(OrganizationMember.user_id == user.id)
+        )
+        if membership is not None:
+            organization_id = membership.organization_id
+
     engagement = Engagement(
         name=payload.name,
         mode=EngagementMode(payload.mode),
         owner_id=user.id,
+        organization_id=organization_id,
     )
     db.add(engagement)
     await db.flush()
@@ -68,6 +91,7 @@ async def create_engagement(payload: EngagementCreate, user: CurrentUser, db: Db
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=organization_id,
         metadata={"name": engagement.name},
         db=db,
     )
@@ -109,6 +133,7 @@ async def update_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata=update_data,
         db=db,
     )
@@ -131,6 +156,7 @@ async def delete_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={},
         db=db,
     )
@@ -187,6 +213,7 @@ async def add_target(
         resource_type="target",
         resource_id=target.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"value": payload.value, "type": payload.type},
         db=db,
     )

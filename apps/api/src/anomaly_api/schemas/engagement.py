@@ -11,6 +11,7 @@ class EngagementCreate(BaseModel):
     status: str | None = Field(default="draft")
     client_name: str | None = None
     rules_of_engagement: str | None = None
+    organization_id: UUID | None = None
 
 
 class EngagementUpdate(BaseModel):
@@ -23,6 +24,7 @@ class EngagementUpdate(BaseModel):
 
 class EngagementResponse(BaseModel):
     id: UUID
+    organization_id: UUID | None = None
     name: str
     mode: str
     status: str

@@ -73,6 +73,7 @@ async def create_run(
     run_params = dict(payload.params or {})
     run_params["targets"] = targets  # scope-checked targets must not be overridden
     run = Run(
+        organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
         user_id=user.id,
         tool=payload.tool,
@@ -82,6 +83,7 @@ async def create_run(
     )
     db.add(run)
     await db.flush()
+    org_id = getattr(engagement, "organization_id", None)
     if result.has_warning:
         await AuditService.log(
             actor_id=user.id,
@@ -89,6 +91,7 @@ async def create_run(
             resource_type="run",
             resource_id=run.id,
             engagement_id=engagement.id,
+            organization_id=org_id,
             metadata={"targets": targets, "out_of_scope": result.out_of_scope},
             db=db,
         )
@@ -98,6 +101,7 @@ async def create_run(
         resource_type="run",
         resource_id=run.id,
         engagement_id=engagement.id,
+        organization_id=org_id,
         metadata={"tool": run.tool, "targets": targets},
         db=db,
     )
