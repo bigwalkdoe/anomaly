@@ -1,15 +1,8 @@
 import json
-import uuid
 
 import pytest
-from anomaly_core.auth import hash_password
-from anomaly_core.models.engagement import Engagement, EngagementMode, Scope, Target
-from anomaly_core.models.run import Run, RunStatus
-from anomaly_core.models.user import Role, RoleName, User, UserRole
-from anomaly_core.runner import FakeRunner, RunResult
+
 from anomaly_tools.recon import parse_recon_output
-from anomaly_worker.executor import execute_run_inline
-from sqlalchemy import func, select
 
 SAMPLE = "\n".join(
     [
@@ -32,6 +25,16 @@ def test_parse_recon_output_discovers_targets():
 
 @pytest.mark.asyncio
 async def test_recon_creates_discovered_targets(db_session):
+    import uuid
+
+    from anomaly_core.auth import hash_password
+    from anomaly_core.models.engagement import Engagement, EngagementMode, Scope, Target
+    from anomaly_core.models.run import Run, RunStatus
+    from anomaly_core.models.user import Role, RoleName, User, UserRole
+    from anomaly_core.runner import FakeRunner, RunResult
+    from anomaly_worker.executor import execute_run_inline
+    from sqlalchemy import func, select
+
     role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
     if role is None:
         role = Role(name=RoleName.admin)

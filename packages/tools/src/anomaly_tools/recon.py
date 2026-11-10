@@ -36,7 +36,12 @@ HttpxTool = ReconTool
 
 
 def parse_recon_output(
-    output: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
+    output: str,
+    targets: list[str] | None = None,
+    params: dict[str, Any] | None = None,
+    *,
+    exit_code: int = 0,
+    stderr: str = "",
 ) -> ToolResult:
     discovered: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -68,7 +73,8 @@ def parse_recon_output(
         )
     return ToolResult(
         stdout=output or "",
-        exit_code=0,
+        stderr=stderr,
+        exit_code=exit_code,
         parsed_findings=[],
         discovered_targets=discovered,
         raw=output or "",

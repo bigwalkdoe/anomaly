@@ -16,6 +16,7 @@ from anomaly_api.middleware import (
     validation_exception_handler,
 )
 from anomaly_api.routers import (
+    ai,
     api_keys,
     audit,
     auth,
@@ -110,6 +111,10 @@ tags_metadata = [
         "name": "vulnerabilities",
         "description": "Vulnerability summary and severity breakdowns.",
     },
+    {
+        "name": "ai",
+        "description": "AI-assisted suggestions and drafting (advisory, audited).",
+    },
 ]
 
 
@@ -178,3 +183,4 @@ app.include_router(mfa.router)
 app.include_router(schedules.router)
 app.include_router(reports.router)
 app.include_router(vulnerabilities.router)
+app.include_router(ai.router)
