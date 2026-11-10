@@ -40,12 +40,18 @@ async def test_enqueue_run_scope_warning_and_status(client, db_session, monkeypa
     )
     db_session.add(p)
     await db_session.flush()
-    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id, status=EngagementStatus.approved)
+    eng = Engagement(
+        name="E1",
+        mode=EngagementMode.own_infra,
+        owner_id=owner.id,
+        status=EngagementStatus.approved,
+    )
     db_session.add(eng)
     await db_session.flush()
     db_session.add(EngagementMember(engagement_id=eng.id, user_id=p.id, role=RoleName.pentester))
     # allow target in scope for policy enforcement
     from anomaly_core.models import Scope, ScopeEntry, ScopeEntryKind
+
     scope = Scope(engagement_id=eng.id)
     db_session.add(scope)
     await db_session.flush()

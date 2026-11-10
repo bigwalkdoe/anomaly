@@ -87,9 +87,7 @@ async def test_openai_provider_complete(monkeypatch):
     )
     monkeypatch.setattr("anomaly_ai.providers.httpx.AsyncClient", lambda *a, **k: dummy)
 
-    p = OpenAIProvider(
-        api_key="sk-test", model="gpt-4o-mini", base_url="https://api.openai.com/v1"
-    )
+    p = OpenAIProvider(api_key="sk-test", model="gpt-4o-mini", base_url="https://api.openai.com/v1")
     resp = await p.complete([AIMessage(role="user", content="hi")])
 
     assert resp.content == "openai hi"

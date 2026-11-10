@@ -28,7 +28,6 @@ from .finding import (
 from .login_attempt import LoginAttempt
 from .membership import EngagementMember
 from .mfa import MFASecret
-from .organization import Organization, OrganizationMember, OrganizationRole, OrganizationStatus
 from .playbook import Playbook
 from .playbook_step import PlaybookStep
 from .run import Run, RunStatus
@@ -47,9 +46,6 @@ from .user import (
 
 __all__ = [
     "Organization",
-    "OrganizationMember",
-    "OrganizationRole",
-    "OrganizationStatus",
     "User",
     "Role",
     "Permission",
@@ -88,7 +84,6 @@ __all__ = [
     "CronSchedule",
     "MFASecret",
     "LoginAttempt",
-    "Organization",
     "Workspace",
     "Membership",
 ]

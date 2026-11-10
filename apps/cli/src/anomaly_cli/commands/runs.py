@@ -33,7 +33,7 @@ def start(
         target_list.append(target)
 
     params: dict[str, Any] = {}
-    for p in (param or []):
+    for p in param or []:
         if "=" not in p:
             console.print(f"[red]Invalid param '{p}': use key=value[/red]")
             raise typer.Exit(1)
@@ -75,8 +75,7 @@ def status(
         raise typer.Exit(1)
     data = r.json()
     console.print(
-        f"Run {run_id}: [bold]{data['status']}[/bold]  "
-        f"scope_warning={data.get('scope_warning')}"
+        f"Run {run_id}: [bold]{data['status']}[/bold]  scope_warning={data.get('scope_warning')}"
     )
 
 

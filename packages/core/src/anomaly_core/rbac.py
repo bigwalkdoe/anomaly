@@ -9,7 +9,6 @@ from sqlalchemy.orm import selectinload
 from anomaly_core.models import (
     Engagement,
     EngagementMember,
-    OrganizationMember,
     Permission,
     Role,
     RoleName,

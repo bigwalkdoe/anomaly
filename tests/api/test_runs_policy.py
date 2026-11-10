@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import uuid
-
 import pytest
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import (
@@ -9,7 +7,6 @@ from anomaly_core.models import (
     Engagement,
     EngagementMember,
     EngagementMode,
-    EngagementStatus,
     Role,
     RoleName,
     Scope,
@@ -34,7 +31,10 @@ async def _seed(db, email, role):
 
 @pytest.mark.asyncio
 async def test_assessment_requires_approval_and_scope_policy(client, db_session, monkeypatch):
-    """Review Focus #2/#3: unapproved or out-of-scope assessment requests denied and audited; no bypass."""
+    """Review Focus #2/#3: unapproved or out-of-scope assessment requests denied.
+
+    Denials must be audited and there must be no bypass.
+    """
     monkeypatch.setenv("RUNNER_MODE", "inline")
     owner = await _seed(db_session, "policy-owner@example.com", RoleName.admin)
     pt = await _seed(db_session, "policy-pt@example.com", RoleName.pentester)
@@ -45,7 +45,9 @@ async def test_assessment_requires_approval_and_scope_policy(client, db_session,
     scope = Scope(engagement_id=eng.id)
     db_session.add(scope)
     await db_session.flush()
-    db_session.add(ScopeEntry(scope_id=scope.id, kind=ScopeEntryKind.in_, target_value="allowed.test"))
+    db_session.add(
+        ScopeEntry(scope_id=scope.id, kind=ScopeEntryKind.in_, target_value="allowed.test")
+    )
     await db_session.commit()
 
     token = create_access_token(pt.id, [RoleName.pentester.value])
@@ -64,7 +66,9 @@ async def test_assessment_requires_approval_and_scope_policy(client, db_session,
     oh = {"Authorization": f"Bearer {owner_token}"}
     appr = await client.post(f"/api/engagements/{eng.id}/approve", headers=oh, json={})
     if appr.status_code == 404:
-        appr = await client.patch(f"/api/engagements/{eng.id}", headers=oh, json={"status": "approved"})
+        appr = await client.patch(
+            f"/api/engagements/{eng.id}", headers=oh, json={"status": "approved"}
+        )
     assert appr.status_code == 200
 
     # Out-of-scope -> denied (policy/scope enforcement, no bypass)
@@ -78,7 +82,9 @@ async def test_assessment_requires_approval_and_scope_policy(client, db_session,
     deny_audit = await db_session.scalar(
         select(AuditLog).where(
             AuditLog.engagement_id == eng.id,
-            AuditLog.action.in_(["policy.denied", "assessment.denied", "run.denied", "scope.denied"]),
+            AuditLog.action.in_(
+                ["policy.denied", "assessment.denied", "run.denied", "scope.denied"]
+            ),
         )
     )
     assert deny_audit is not None

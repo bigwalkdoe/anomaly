@@ -95,9 +95,7 @@ def test_findings_list(monkeypatch):
         )
 
     monkeypatch.setattr("anomaly_cli.commands.findings.httpx.get", fake_get)
-    res = runner.invoke(
-        app, ["findings", "list", "--id", "eng-1", "--api-url", "http://x"]
-    )
+    res = runner.invoke(app, ["findings", "list", "--id", "eng-1", "--api-url", "http://x"])
     assert res.exit_code == 0
     assert "SQLi" in res.output
     assert "high" in res.output
@@ -140,9 +138,7 @@ def test_runs_start_and_status(monkeypatch):
     assert "10.0.0.1" in calls[0][2]["targets"]
     assert calls[0][2]["params"]["ports"] == "80"
 
-    res = runner.invoke(
-        app, ["runs", "status", "--id", "run-12345678", "--api-url", "http://x"]
-    )
+    res = runner.invoke(app, ["runs", "status", "--id", "run-12345678", "--api-url", "http://x"])
     assert res.exit_code == 0
     assert "running" in res.output
 

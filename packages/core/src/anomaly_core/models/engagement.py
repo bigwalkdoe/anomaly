@@ -118,7 +118,9 @@ class Engagement(Base):
     )
 
     owner: Mapped[User] = relationship("User", foreign_keys=[owner_id], lazy="selectin")
-    approver: Mapped[User | None] = relationship("User", foreign_keys=[approved_by], lazy="selectin")
+    approver: Mapped[User | None] = relationship(
+        "User", foreign_keys=[approved_by], lazy="selectin"
+    )
     scope: Mapped[Scope | None] = relationship(
         "Scope",
         back_populates="engagement",

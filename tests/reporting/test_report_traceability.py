@@ -6,7 +6,10 @@ from anomaly_reporting import ReportGenerator
 
 
 def test_report_is_traceable_to_org_engagement_job_execution_evidence():
-    """Review Focus #5: report must be traceable to org/engagement/job/execution/findings/evidence."""
+    """Review Focus #5: report must be traceable.
+
+    Trace to org/engagement/job/execution/findings/evidence.
+    """
     org_id = str(uuid.uuid4())
     eng_id = str(uuid.uuid4())
     run_id = str(uuid.uuid4())

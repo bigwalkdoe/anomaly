@@ -27,10 +27,16 @@ async def generate_report(
         await db.scalars(select(Finding).where(Finding.engagement_id == engagement_id))
     ).all()
     runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement_id))).all()
-    evidence_rows = (await db.scalars(select(Evidence).where(Evidence.engagement_id == engagement_id))).all()
+    evidence_rows = (
+        await db.scalars(select(Evidence).where(Evidence.engagement_id == engagement_id))
+    ).all()
     if not evidence_rows and runs:
         run_ids = [r.id for r in runs]
-        evidence_rows = (await db.scalars(select(Evidence).where(Evidence.run_id.in_(run_ids)))).all() if run_ids else []
+        evidence_rows = (
+            (await db.scalars(select(Evidence).where(Evidence.run_id.in_(run_ids)))).all()
+            if run_ids
+            else []
+        )
 
     findings_data = [
         {

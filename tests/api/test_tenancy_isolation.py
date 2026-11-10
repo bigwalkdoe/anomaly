@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import uuid
-
 import pytest
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import (
     Engagement,
     EngagementMember,
     EngagementMode,
-    Evidence,
-    EvidenceType,
     Membership,
     Organization,
     Role,
@@ -45,8 +41,12 @@ async def test_cross_tenant_authorization_regression(client, db_session):
     db_session.add(Membership(user_id=admin.id, organization_id=org_a.id, role="owner"))
     db_session.add(Membership(user_id=other.id, organization_id=org_b.id, role="owner"))
 
-    eng_a = Engagement(name="Eng A", mode=EngagementMode.own_infra, owner_id=admin.id, organization_id=org_a.id)
-    eng_b = Engagement(name="Eng B", mode=EngagementMode.own_infra, owner_id=other.id, organization_id=org_b.id)
+    eng_a = Engagement(
+        name="Eng A", mode=EngagementMode.own_infra, owner_id=admin.id, organization_id=org_a.id
+    )
+    eng_b = Engagement(
+        name="Eng B", mode=EngagementMode.own_infra, owner_id=other.id, organization_id=org_b.id
+    )
     db_session.add_all([eng_a, eng_b])
     await db_session.flush()
     db_session.add(EngagementMember(engagement_id=eng_a.id, user_id=admin.id, role=RoleName.admin))
