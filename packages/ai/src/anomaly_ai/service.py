@@ -34,7 +34,13 @@ def _extract_json(text: str) -> Any:
 
 def _normalize_suggestion(item: Any) -> dict[str, Any]:
     if not isinstance(item, dict):
-        return {"tool": str(item), "reason": "", "targets_hint": "", "params": {}, "priority": "medium"}
+        return {
+            "tool": str(item),
+            "reason": "",
+            "targets_hint": "",
+            "params": {},
+            "priority": "medium",
+        }
     return {
         "tool": str(item.get("tool", "")).strip(),
         "reason": str(item.get("reason", "") or ""),
@@ -61,7 +67,11 @@ class AIService:
                     resource_type="ai",
                     resource_id=None,
                     engagement_id=engagement_id,
-                    metadata={"model": resp.model, "usage": resp.usage, "provider": getattr(self.provider, "name", None)},
+                    metadata={
+                        "model": resp.model,
+                        "usage": resp.usage,
+                        "provider": getattr(self.provider, "name", None),
+                    },
                     db=self.db,
                 )
                 await self.db.commit()
@@ -121,9 +131,14 @@ class AIService:
                 user_parts.append("Context: " + json.dumps(context, default=str))
             except Exception:
                 user_parts.append(f"Context: {context!r}")
-        messages = [AIMessage(role="system", content=system), AIMessage(role="user", content="\n".join(user_parts))]
+        messages = [
+            AIMessage(role="system", content=system),
+            AIMessage(role="user", content="\n".join(user_parts)),
+        ]
 
-        resp = await self.complete(messages, actor_id=actor_id, engagement_id=engagement_id, **kwargs)
+        resp = await self.complete(
+            messages, actor_id=actor_id, engagement_id=engagement_id, **kwargs
+        )
         provider_name = getattr(self.provider, "name", None) or "unknown"
         raw_text = resp.content or ""
         parse_success = False

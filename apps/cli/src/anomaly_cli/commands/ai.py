@@ -28,9 +28,9 @@ def suggest_tools(
     if context_json:
         try:
             context = json.loads(context_json)
-        except Exception:
+        except Exception as exc:
             console.print("[red]Invalid --context-json: must be valid JSON[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from exc
 
     payload = {"objective": objective, "context": context}
     if engagement_id:
@@ -76,7 +76,9 @@ def suggest_tools(
         if notes:
             console.print(f"[dim]Notes:[/dim] {notes}")
     else:
-        console.print("[yellow]Could not parse structured suggestions; showing raw output:[/yellow]")
+        console.print(
+            "[yellow]Could not parse structured suggestions; showing raw output:[/yellow]"
+        )
         if raw:
             console.print(raw)
         elif notes:

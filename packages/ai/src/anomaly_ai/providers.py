@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx
-
 from anomaly_core.config import get_settings
 
 
@@ -18,7 +17,9 @@ class AIMessage:
 class AIResponse:
     content: str
     model: str
-    usage: dict[str, int] | None = field(default_factory=lambda: {"prompt_tokens": 0, "completion_tokens": 0})
+    usage: dict[str, int] | None = field(
+        default_factory=lambda: {"prompt_tokens": 0, "completion_tokens": 0}
+    )
 
 
 class AIProvider(Protocol):
@@ -166,27 +167,59 @@ def get_provider(name: str | None = None, **kwargs) -> AIProvider:
         settings = None
 
     provider_name = name or (getattr(settings, "ai_provider", "ollama") if settings else "ollama")
-    timeout = kwargs.pop("timeout", getattr(settings, "ai_request_timeout_s", 60) if settings else 60)
+    timeout = kwargs.pop(
+        "timeout", getattr(settings, "ai_request_timeout_s", 60) if settings else 60
+    )
 
     if provider_name == "openai":
         return OpenAIProvider(
-            api_key=kwargs.pop("api_key", getattr(settings, "ai_openai_api_key", "") if settings else ""),
-            model=kwargs.pop("model", getattr(settings, "ai_openai_model", "gpt-4o-mini") if settings else "gpt-4o-mini"),
-            base_url=kwargs.pop("base_url", getattr(settings, "ai_openai_base_url", "https://api.openai.com/v1") if settings else "https://api.openai.com/v1"),
+            api_key=kwargs.pop(
+                "api_key", getattr(settings, "ai_openai_api_key", "") if settings else ""
+            ),
+            model=kwargs.pop(
+                "model",
+                getattr(settings, "ai_openai_model", "gpt-4o-mini") if settings else "gpt-4o-mini",
+            ),
+            base_url=kwargs.pop(
+                "base_url",
+                getattr(settings, "ai_openai_base_url", "https://api.openai.com/v1")
+                if settings
+                else "https://api.openai.com/v1",
+            ),
             timeout=timeout,
             **kwargs,
         )
     if provider_name == "anthropic":
         return AnthropicProvider(
-            api_key=kwargs.pop("api_key", getattr(settings, "ai_anthropic_api_key", "") if settings else ""),
-            model=kwargs.pop("model", getattr(settings, "ai_anthropic_model", "claude-3-5-sonnet") if settings else "claude-3-5-sonnet"),
-            base_url=kwargs.pop("base_url", getattr(settings, "ai_anthropic_base_url", "https://api.anthropic.com/v1") if settings else "https://api.anthropic.com/v1"),
+            api_key=kwargs.pop(
+                "api_key", getattr(settings, "ai_anthropic_api_key", "") if settings else ""
+            ),
+            model=kwargs.pop(
+                "model",
+                getattr(settings, "ai_anthropic_model", "claude-3-5-sonnet")
+                if settings
+                else "claude-3-5-sonnet",
+            ),
+            base_url=kwargs.pop(
+                "base_url",
+                getattr(settings, "ai_anthropic_base_url", "https://api.anthropic.com/v1")
+                if settings
+                else "https://api.anthropic.com/v1",
+            ),
             timeout=timeout,
             **kwargs,
         )
     return OllamaProvider(
-        base_url=kwargs.pop("base_url", getattr(settings, "ai_ollama_base_url", "http://localhost:11434") if settings else "http://localhost:11434"),
-        model=kwargs.pop("model", getattr(settings, "ai_ollama_model", "llama3.1") if settings else "llama3.1"),
+        base_url=kwargs.pop(
+            "base_url",
+            getattr(settings, "ai_ollama_base_url", "http://localhost:11434")
+            if settings
+            else "http://localhost:11434",
+        ),
+        model=kwargs.pop(
+            "model",
+            getattr(settings, "ai_ollama_model", "llama3.1") if settings else "llama3.1",
+        ),
         timeout=timeout,
         **kwargs,
     )
