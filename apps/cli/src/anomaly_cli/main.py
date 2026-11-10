@@ -9,7 +9,14 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from anomaly_cli.commands.ai import app as ai_app
+from anomaly_cli.commands.config import app as config_app
 from anomaly_cli.commands.dashboard import app as dashboard_app
+from anomaly_cli.commands.engagements import app as engagements_app
+from anomaly_cli.commands.findings import app as findings_app
+from anomaly_cli.commands.reports import app as reports_app
+from anomaly_cli.commands.runs import app as runs_app
+from anomaly_cli.commands.sync import app as sync_app
 
 app = typer.Typer(name="anomaly", help="Anomaly CLI")
 console = Console()
@@ -106,6 +113,13 @@ def findings_list(engagement_id: str):
 
 
 app.add_typer(dashboard_app, name="dashboard")
+app.add_typer(engagements_app, name="engagements")
+app.add_typer(runs_app, name="runs")
+app.add_typer(findings_app, name="findings")
+app.add_typer(reports_app, name="reports")
+app.add_typer(config_app, name="config")
+app.add_typer(sync_app, name="sync")
+app.add_typer(ai_app, name="ai")
 
 
 @app.command()
