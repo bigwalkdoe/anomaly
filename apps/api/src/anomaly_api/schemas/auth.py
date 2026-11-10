@@ -36,6 +36,12 @@ class LoginResponse(BaseModel):
     user_id: str | None = None
 
 
+class MembershipResponse(BaseModel):
+    organization_id: uuid.UUID
+    workspace_id: uuid.UUID | None = None
+    role: str
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -43,3 +49,5 @@ class UserResponse(BaseModel):
     email: str
     name: str
     roles: list[str] = Field(default_factory=list)
+    memberships: list[MembershipResponse] = Field(default_factory=list)
+    organizations: list[uuid.UUID] = Field(default_factory=list)

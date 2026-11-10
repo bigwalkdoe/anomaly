@@ -134,6 +134,30 @@ async def engagement_accessible(
     engagement: Engagement,
     min_role: RoleName = RoleName.client_viewer,
 ) -> bool:
+    # Tenant isolation: if engagement is org-scoped, require org membership
+    org_id = getattr(engagement, "organization_id", None)
+    if org_id is not None:
+        from anomaly_core.models.tenancy import Membership as OrgMembership
+
+        org_member = await db.scalar(
+            select(OrgMembership).where(
+                OrgMembership.user_id == user.id,
+                OrgMembership.organization_id == org_id,
+            )
+        )
+        if org_member is None:
+            return False
+        # within-org admin can access
+        if has_role(user, RoleName.admin):
+            return True
+        membership = await get_membership(db, user, engagement)
+        if membership is not None:
+            return ROLE_RANK[membership.role] >= ROLE_RANK[min_role]
+        # org member without explicit engagement membership: allow if meets min role via global role? conservative deny for viewers
+        if min_role == RoleName.client_viewer:
+            return True
+        return False
+
     if has_role(user, RoleName.admin):
         return True
     membership = await get_membership(db, user, engagement)

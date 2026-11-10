@@ -131,6 +131,18 @@ class Evidence(Base):
     __tablename__ = "evidence"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    engagement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("engagements.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     finding_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("findings.id", ondelete="SET NULL"),
@@ -144,6 +156,10 @@ class Evidence(Base):
         SAEnum(EvidenceType, values_callable=_enum_values), nullable=False, index=True
     )
     storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    collector: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tool: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tool_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSON, default=dict, nullable=False
     )

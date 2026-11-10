@@ -57,6 +57,22 @@ async def create_run(
     user: CurrentUser,
     db: DbSession,
 ):
+    # Policy gate: engagement must be approved/active for assessment execution
+    if getattr(engagement, "status", None) is not None:
+        status_val = engagement.status.value if hasattr(engagement.status, "value") else str(engagement.status)
+        if status_val not in ("approved", "active"):
+            await AuditService.log(
+                actor_id=user.id,
+                action="policy.denied",
+                resource_type="engagement",
+                resource_id=engagement.id,
+                engagement_id=engagement.id,
+                metadata={"reason": "engagement_not_approved", "status": status_val, "op": "assessment.request"},
+                db=db,
+            )
+            await db.commit()
+            raise HTTPException(status_code=403, detail="Engagement not approved for assessment")
+
     targets = payload.targets
     try:
         from anomaly_core.models import Scope
@@ -73,26 +89,31 @@ async def create_run(
     result = check_scope(eng_loaded, targets)
     run_params = dict(payload.params or {})
     run_params["targets"] = targets  # scope-checked targets must not be overridden
+
+    # Enforce scope policy: out-of-scope targets are denied (no bypass)
+    if result.has_warning and result.out_of_scope:
+        await AuditService.log(
+            actor_id=user.id,
+            action="policy.denied",
+            resource_type="engagement",
+            resource_id=engagement.id,
+            engagement_id=engagement.id,
+            metadata={"reason": "out_of_scope", "targets": targets, "out_of_scope": result.out_of_scope},
+            db=db,
+        )
+        await db.commit()
+        raise HTTPException(status_code=403, detail="Requested targets are out of scope")
+
     run = Run(
         engagement_id=engagement.id,
         user_id=user.id,
         tool=payload.tool,
         status=RunStatus.queued,
-        scope_warning=result.has_warning,
+        scope_warning=False,
         params=run_params,
     )
     db.add(run)
     await db.flush()
-    if result.has_warning:
-        await AuditService.log(
-            actor_id=user.id,
-            action="scope.warning",
-            resource_type="run",
-            resource_id=run.id,
-            engagement_id=engagement.id,
-            metadata={"targets": targets, "out_of_scope": result.out_of_scope},
-            db=db,
-        )
     await AuditService.log(
         actor_id=user.id,
         action="run.enqueue",
