@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from anomaly_core.models import (
     Engagement,
     EngagementMember,
+    OrganizationMember,
     Permission,
     Role,
     RoleName,
@@ -136,6 +137,18 @@ async def engagement_accessible(
 ) -> bool:
     if has_role(user, RoleName.admin):
         return True
+
+    org_id = getattr(engagement, "organization_id", None)
+    if org_id is not None:
+        org_member = await db.scalar(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == org_id,
+                OrganizationMember.user_id == user.id,
+            )
+        )
+        if org_member is None:
+            return False
+
     membership = await get_membership(db, user, engagement)
     if membership is None:
         return False

@@ -43,11 +43,24 @@ async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, o
         eng_ids = [m.engagement_id for m in members]
         if not eng_ids:
             return []
+
+        org_memberships = (
+            await db.scalars(
+                select(OrganizationMember).where(OrganizationMember.user_id == user.id)
+            )
+        ).all()
+        org_ids = {m.organization_id for m in org_memberships}
+
         engagements = (
             await db.scalars(
                 select(Engagement).where(Engagement.id.in_(eng_ids)).offset(offset).limit(limit)
             )
         ).all()
+        engagements = [
+            e
+            for e in engagements
+            if getattr(e, "organization_id", None) is None or e.organization_id in org_ids
+        ]
     return [EngagementResponse.model_validate(e) for e in engagements]
 
 
