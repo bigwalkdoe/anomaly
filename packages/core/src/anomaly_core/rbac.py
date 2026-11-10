@@ -134,9 +134,6 @@ async def engagement_accessible(
     engagement: Engagement,
     min_role: RoleName = RoleName.client_viewer,
 ) -> bool:
-    if has_role(user, RoleName.admin):
-        return True
-
     org_id = getattr(engagement, "organization_id", None)
     if org_id is not None:
         from anomaly_core.models.tenancy import Membership
@@ -149,6 +146,9 @@ async def engagement_accessible(
         )
         if org_member is None:
             return False
+
+    if has_role(user, RoleName.admin):
+        return True
 
     membership = await get_membership(db, user, engagement)
     if membership is None:
