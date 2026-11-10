@@ -18,7 +18,10 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 def _load() -> dict:
     if CONFIG_FILE.exists():
         return json.loads(CONFIG_FILE.read_text())
-    return {"api_url": os.environ.get("ANOMALY_API_URL", "http://localhost:8000"), "token": None}
+    return {
+        "api_url": os.environ.get("ANOMALY_API_URL", "http://localhost:8000"),
+        "token": None,  # nosec B105 - default is unset token, not a hardcoded secret
+    }
 
 
 @app.command("show")

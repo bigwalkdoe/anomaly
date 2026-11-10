@@ -798,28 +798,93 @@ Step | Expected behavior
 
 This vertical slice validates identity, tenancy, engagement, policy, queue, runner, findings, evidence and reporting in one end-to-end workflow. It is the recommended first major release milestone.
 
-## 18. Final architectural decisions
+## 18. Final architectural decisions (ADR catalogue)
 
-Decision area | Recommendation
---- | --- | ---
-Product | Security Operations Platform.
-Architecture | Modular monolith plus isolated execution services.
-Frontend | Next.js and TypeScript.
-Backend | FastAPI and Python.
-Database | PostgreSQL.
-Queue | Redis / ARQ initially.
-Object storage | MinIO.
-Authentication | OIDC and MFA.
-Authorization | RBAC plus resource-level policy engine.
-Multi-tenancy | Organization isolation plus RLS where appropriate.
-Execution | Ephemeral, isolated runners.
-AI | Provider-independent gateway.
-Events | Versioned event contracts and transactional outbox.
-Observability | Prometheus, Grafana and structured logs.
-Deployment | Docker Compose for development; Kubernetes for production.
-Commercial model | Community, Professional and Enterprise.
+Status: **Finalized (target-state, 2026-11-10)**. These ADRs guide incremental implementation; deviations must be recorded with rationale and migration impact. Reconcile against `docs/superpowers/plans/2026-11-10-anomaly-full-platform-gap-analysis.md` before execution.
 
-Keep identity, engagements, assets, findings, governance and reporting in a well-structured control-plane application initially. Separate execution, workers and resource-intensive processing because they have different security and scaling requirements.
+### ADR-001 — Product scope and positioning
+- **Status:** Accepted
+- **Context:** Anomaly must unify authorized assessments, investigation, evidence, reporting, and governance without being limited to a tool-launcher UI.
+- **Decision:** Position Anomaly as a **Security Operations Platform / control plane**. Differentiation is orchestration, governance, evidence integrity, and intelligence (not only offensive tooling). Offensive capabilities operate only within authorized, governed engagements.
+- **Consequences:** Roadmap and domain model must prioritize tenancy, policy, auditability, and evidence alongside assessment features. Marketing/UX must avoid "pentest-only" framing.
+- **Migration/impact:** Existing engagement/run/finding/report primitives remain; extend with approvals, incidents/assets/evidence governance incrementally. No destructive rewrite.
+
+### ADR-002 — Architecture style
+- **Status:** Accepted
+- **Context:** Need clear domain boundaries and security isolation without premature microservice overhead.
+- **Decision:** Adopt a **modular monolith control plane** (identity, engagements, assets, vulnerabilities, governance, reporting) with **independently deployable workers/scheduler and isolated runner services** for execution and resource-intensive processing.
+- **Consequences:** Strong internal package/layer boundaries and contracts required; execution trust boundary separated from API. Scaling/containment improves for runners independently.
+- **Migration/impact:** Preserve current FastAPI app/packages; refactor toward domain/service/repository boundaries additively; move tool execution out of API-process paths where present.
+
+### ADR-003 — Frontend and backend technology
+- **Status:** Accepted
+- **Context:** Existing repo direction uses Next.js/TypeScript and FastAPI/Python; consistency and delivery speed matter.
+- **Decision:** **Next.js + TypeScript** for web/typed contracts; **FastAPI + Python 3.12**, **Pydantic** for validation, **SQLAlchemy 2** for persistence access, **Alembic** for migrations.
+- **Consequences:** Shared typed API contracts/OpenAPI encouraged; Python ecosystem leveraged for tooling/integrations; requires discipline in layering (no business logic in routers).
+- **Migration/impact:** Retain and harden existing apps (`apps/api`, `apps/web`, `apps/cli`); incremental contract and schema improvements.
+
+### ADR-004 — Primary data stores
+- **Status:** Accepted
+- **Context:** Need transactional integrity, job coordination, and durable evidence/artifact storage.
+- **Decision:** **PostgreSQL** as system of record; **Redis** for transient state/queue coordination and caching as needed; **MinIO (S3-compatible)** for evidence/artifacts and large objects. Add specialized stores (search/index) only when justified by measured needs.
+- **Consequences:** Clear ownership of data classes; evidence stored outside primary DB with integrity metadata in DB. Operational dependency on Postgres/Redis/object storage.
+- **Migration/impact:** Additive schema evolution; introduce/standardize evidence object keys and checksums; ensure backups/restore cover DB and object storage.
+
+### ADR-005 — Authentication and session management
+- **Status:** Accepted
+- **Context:** Platform handles sensitive operations across tenants and roles.
+- **Decision:** **OIDC/OAuth 2.0** compatible authentication, **MFA (TOTP + recovery codes)**, secure server-side sessions/revocation/rotation, scoped/expiring **API keys and service credentials**, optional enterprise **SAML SSO**. Browser auth uses secure, **HttpOnly, SameSite** cookies with appropriate **CSRF** protections.
+- **Consequences:** Central identity flows and token/session lifecycle management required; service-to-service auth must be scoped and short-lived.
+- **Migration/impact:** Evolve existing JWT/auth/MFA/API-key routes to align with hardened session/CSRF and enterprise IdP integration; additive changes to user/auth tables.
+
+### ADR-006 — Authorization and multi-tenancy
+- **Status:** Accepted
+- **Context:** Strict isolation is mandatory; current model is engagement-centric without full org/workspace tenancy.
+- **Decision:** Model hierarchy **Platform → Organization → Workspace → Engagement**. Enforce **tenant context derived server-side** from authenticated membership (never trusted from client-supplied org IDs). Use **RBAC plus resource-level, permission-based policy checks** at service/data-access layers (APIs, WS, exports, workers). Apply **PostgreSQL RLS** where appropriate; partition object storage by tenant and authorize before retrieval.
+- **Consequences:** All tenant-owned records require `organization_id` (and workspace linkage where used); consistent authz required across surfaces. Increased schema/query complexity offset by safety.
+- **Migration/impact:** Add organizations/workspaces/memberships additively; backfill legacy data to a bootstrap org; propagate tenant keys and indexes; update access checks and tests for cross-tenant denial.
+
+### ADR-007 — Policy engine and approvals
+- **Status:** Accepted
+- **Context:** Assessments and sensitive actions must be explicitly authorized, scoped, and auditable; AI must not bypass controls.
+- **Decision:** Introduce a centralized **policy engine** evaluating actor, tenant, resource, scope, approval state, quotas/limits, and action to produce auditable **allow/deny decisions**. Require **approval workflows** for gated actions (e.g., engagement activation/assessment execution) with recorded requester/approver/reason/timestamps.
+- **Consequences:** Every execution/sensitive action depends on policy evaluation and recorded decisions; clear failure modes (deny with reason) required.
+- **Migration/impact:** Add approvals/policy_decisions models and service hooks; integrate into run enqueue and other gated endpoints; map existing engagement statuses compatibly.
+
+### ADR-008 — Execution engine and runner isolation
+- **Status:** Accepted
+- **Context:** Tool execution is high-risk and must be contained, scoped, and observable.
+- **Decision:** Execute tools only via **isolated runners/workers** (never in API process) using authenticated, short-lived **execution manifests** (tenant, engagement, approved scope ref, tool/version, limits, expiry, destination). Apply isolation profiles (restricted containers baseline; stronger isolation for higher risk): least privilege, resource limits, controlled egress/DNS, no docker socket/host mounts, image provenance/scanning, scoped credentials, validated resolved destinations (DNS/redirect/IP) against scope and exclusions.
+- **Consequences:** Operational complexity (images, networking, cleanup) increases; security and blast-radius control improve. Retries limited to safe/transient failures.
+- **Migration/impact:** Evolve `packages/core.runner`/`apps/worker` and tool adapters to manifest-driven execution, normalization, and state transitions; enforce policy-before-exec.
+
+### ADR-009 — Evidence integrity and report traceability
+- **Status:** Accepted
+- **Context:** Evidence and reports must be defensible, verifiable, and attributable.
+- **Decision:** Treat **evidence as first-class** with immutable provenance (tenant/engagement/job-execution/tool-version/collector/timestamps/storage ref), **SHA-256 checksums**, classification/retention, and authorized, audited access. Reports must be **traceable** to organization, engagement, job/run/execution, and evidence/finding inputs with recorded generation metadata.
+- **Consequences:** Additional metadata/storage and verification steps; stronger audit/compliance posture.
+- **Migration/impact:** Extend evidence/report schemas and storage flows additively; backfill checksums/provenance where feasible; update reporting pipeline.
+
+### ADR-010 — AI integration and governance
+- **Status:** Accepted
+- **Context:** AI assists analysis but must not bypass authorization, scope, or execution controls.
+- **Decision:** Use a **provider-independent AI gateway/service** (adapters for Ollama/OpenAI/Anthropic, etc.) for explain/summarize/prioritize/draft/suggest use cases. AI outputs are **advisory/structured proposals**; **policy and authorization decide executability**. All AI interactions are audited (bounded inputs/outputs, actor, tenant/engagement context, usage) with data-handling controls.
+- **Consequences:** Consistent observability/cost control; prevents AI-driven privilege escalation. Requires prompt/output validation and safe fallback behavior.
+- **Migration/impact:** Build on existing `packages/ai` suggest-tools implementation; gate any future AI-triggered actions through policy/approvals and runner manifests.
+
+### ADR-011 — Events, API contracts, and integrations
+- **Status:** Accepted
+- **Context:** Modules and external consumers need reliable, evolvable integration points.
+- **Decision:** Provide **versioned REST APIs** (`/api/v1` target), consistent errors/pagination/filtering, correlation IDs, idempotency for sensitive ops, and **versioned domain events** (e.g. `schema_version`) published reliably (transactional outbox where feasible). Consumers must be idempotent; schemas evolve compatibly.
+- **Consequences:** Explicit contract management and compatibility discipline; improved auditability and async workflows.
+- **Migration/impact:** Version/standardize existing endpoints incrementally, add event schemas/outbox for slice-critical events, and document contracts/OpenAPI.
+
+### ADR-012 — Observability, deployment, and commercial packaging
+- **Status:** Accepted
+- **Context:** The platform must be operable, diagnosable, and deployable across environments with clear product tiers.
+- **Decision:** Implement **structured logging, metrics, and health signals** (Prometheus/Grafana targets) with correlation across API/worker/runner; alert on availability, errors, queue/backlog, runner failures, and suspicious auth/access. **Docker Compose** for development, **Kubernetes-oriented** production deployment with environment-specific controls. Commercial packaging: **Community / Professional / Enterprise** tiers with enforceable entitlements/quotas (when enabled).
+- **Consequences:** Baseline SRE/security operations capability; deployment complexity managed via IaC/manifests and runbooks.
+- **Migration/impact:** Extend existing `health/metrics` and logging; harden compose/prod manifests incrementally; introduce billing/entitlement models additively behind clear boundaries.
 
 ## 19. Blueprint acceptance checklist
 

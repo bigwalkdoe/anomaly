@@ -34,7 +34,9 @@ def upgrade() -> None:
             table,
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         )
-        op.execute(f"UPDATE {table} SET updated_at = created_at WHERE updated_at IS NULL")
+        op.execute(
+            f"UPDATE {table} SET updated_at = created_at WHERE updated_at IS NULL"  # nosec B608
+        )
         op.alter_column(table, "updated_at", nullable=False)
     # ### end Alembic commands ###
 

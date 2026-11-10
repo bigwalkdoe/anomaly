@@ -110,7 +110,7 @@ async def create_run(
 
             async with SessionLocal() as db2:
                 await execute_run(db2, run.id)
-        except Exception:
+        except Exception:  # nosec B110 - inline run failures must not break enqueue response
             pass
 
     return RunResponse.model_validate(run)

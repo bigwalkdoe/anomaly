@@ -75,7 +75,7 @@ class AIService:
                     db=self.db,
                 )
                 await self.db.commit()
-            except Exception:
+            except Exception:  # nosec B110 - audit logging must not break suggest_tools
                 pass
         return resp
 
@@ -190,7 +190,7 @@ class AIService:
                     db=self.db,
                 )
                 await self.db.commit()
-            except Exception:
+            except Exception:  # nosec B110 - audit logging must not break suggest_tools
                 pass
 
         return result

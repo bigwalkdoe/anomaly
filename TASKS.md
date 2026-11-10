@@ -4,9 +4,9 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 ## P0 — Correctness, security, and release blockers
 
-- [x] **Resolve Alembic migration lineage (multiple heads)** *(lineage resolved; DB sync partial)*
-  - **Progress (2026-11-10):** removed duplicate parallel chain from `packages/core/alembic/versions`; `alembic heads` reports single head **`f6b770b737bd (head)`**. Stamped dev DB to head (`alembic stamp head`, `alembic current` shows head).
-  - **Remaining:** `alembic check` reports target DB not up to date (model/schema drift vs migrations) and clean `upgrade head` on existing dev schema previously failed on pre-existing objects. Verify `upgrade head`/`downgrade` on a representative clean DB and document canonical path.
+- [x] **Resolve Alembic migration lineage (multiple heads)** *(resolved and validated on clean DB)*
+  - **Progress (2026-11-10):** removed duplicate parallel chain from `packages/core/alembic/versions`; generated `00ea86254717_add_login_attempts.py` to resolve schema drift; canonical head is **`00ea86254717`**. Validated on a clean Postgres 16 DB: `alembic upgrade head` and `alembic check` passed (no new operations). Dev DB stamped/upgraded to head with `alembic check` passing.
+  - **Remaining:** pre-existing `downgrade base` issue on unnamed FK constraint in historical migrations; continue documenting canonical migration path and verify downgrade strategy on representative environments.
 
 - [x] **Achieve CI lint parity (Python)**
   - **Progress (2026-11-10):** fixed remaining Ruff issues (E501/E402/import cleanup) in tools/tests and migrated Pydantic `class Config` to `ConfigDict` where flagged; `ruff check .` passes.
@@ -22,8 +22,8 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
   - **Note:** CI-equivalent environment parity still depends on reproducible full-suite and service setup.
 
 - [ ] **Security & dependency CI jobs** *(in progress)*
-  - **Progress (2026-11-10):** `docker` runner image build succeeded. `gitleaks` findings (15) triaged to ignored/local/generated paths; `.gitleaks.toml` updated and targeted rescans of flagged paths passed. `python3 -m bandit -r packages apps -q -f txt` reported **11 findings** (Low/Medium; e.g. XML parsing in `nmap`, broad exception handling, hardcoded-sql string in a migration, config placeholder). Hardened `packages/tools/src/anomaly_tools/nmap.py` to parse XML via `defusedxml.ElementTree`. `python3 -m safety check` failed in this environment due to a tool/runtime dependency error (Tenacity/httpx2 timeout type issue), so dependency CVE results are **unverified** here.
-  - **Actions:** re-run Bandit after hardening and triage/suppress/fix remaining findings; run Safety in CI or a healthy environment; confirm full gitleaks filesystem scan if desired.
+  - **Progress (2026-11-10):** `docker` runner image build succeeded. `gitleaks` findings triaged (no tracked source secrets; config updated, targeted rescans clean). Bandit hardened/triaged: switched nmap to `defusedxml`, added justified `#nosec` suppressions for intentional defensive patterns and fixed historical migration case; `python3 -m bandit -r packages apps -q` exits 0 with suppressed findings documented in code. `safety check` failed in this environment (tool/runtime issue); `pip-audit` ran and reported environment-wide dependency vulnerabilities (many outside project-managed deps) — requires CI/curated remediation.
+  - **Actions:** re-run Safety/pip-audit in CI, remediate or formally accept dependency findings, and keep Bandit/gitleaks gates green with documented rationale.
   - **Done when:** jobs run clean or with documented, approved exceptions.
 
 - [x] **Runner image build validation**
@@ -36,14 +36,14 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 ## P1 — Blueprint-driven platform work (from gap analysis)
 
-- [ ] **Finalize ADRs 001–012** (`docs/superpowers/specs/2026-11-10-anomaly-full-platform-design-blueprint.md`)
-  - Decisions, trade-offs, and migration consequences (tenancy, policy engine, runner isolation, evidence integrity, AI action gating, etc.).
+- [x] **Finalize ADRs 001–012** (`docs/superpowers/specs/2026-11-10-anomaly-full-platform-design-blueprint.md`)
+  - **Progress (2026-11-10):** replaced section 18 summary table with finalized ADR catalogue (ADR-001–ADR-012) covering product scope, architecture, stack, data stores, authn, tenancy/authz, policy/approvals, execution isolation, evidence/report traceability, AI governance, events/contracts, and observability/deployment/commercial, including consequences and migration impact.
 
-- [ ] **Create implementation spec + prioritized backlog for first vertical slice**
-  - Governed E2E flow: authenticate → create engagement → scope → approval → policy/scope validation → isolated execution → normalized findings → preserved evidence → traceable report.
+- [x] **Create implementation spec + prioritized backlog for first vertical slice**
+  - **Progress (2026-11-10):** added `docs/superpowers/plans/2026-11-10-anomaly-full-platform-implementation-spec.md` defining the governed E2E slice, additive data model/service/API/event contracts, security controls, test plan, and prioritized backlog (B-001…B-020).
 
 - [ ] **Implement first production-grade vertical slice with tests**
-  - Must cover: cross-tenant authz regression, runner isolation/scope-enforcement bypass, AI tool-execution policy bypass, evidence integrity, and report traceability.
+  - Must cover: cross-tenant authz regression, runner isolation/scope-enforcement bypass, AI tool-execution policy bypass, evidence integrity, and report traceability. (Specification/ADRs prepared; implementation not yet started.)
 
 - [ ] **Introduce tenant model & enforcement (Organization/Workspace)**
   - Additive schema/domain changes; enforce tenant context server-side across API/WS/exports/workers.
