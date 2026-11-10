@@ -65,6 +65,12 @@ class Engagement(Base):
     __tablename__ = "engagements"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     mode: Mapped[EngagementMode] = mapped_column(
         SAEnum(EngagementMode, values_callable=_enum_values),
