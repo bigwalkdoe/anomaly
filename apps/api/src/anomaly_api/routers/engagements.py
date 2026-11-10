@@ -16,7 +16,9 @@ from anomaly_core.models import (
     Target,
     TargetType,
 )
-from fastapi import APIRouter, Depends, status
+from anomaly_core.tenancy import get_or_create_default_organization, get_user_memberships
+from datetime import UTC, datetime
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
@@ -34,8 +36,13 @@ router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
 @router.get("", response_model=list[EngagementResponse])
 async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, offset: int = 0):
+    memberships = await get_user_memberships(db, user)
+    org_ids = {m.organization_id for m in memberships}
     if any(r.name == RoleName.admin for r in user.roles):
-        engagements = (await db.scalars(select(Engagement).offset(offset).limit(limit))).all()
+        q = select(Engagement)
+        if org_ids:
+            q = q.where((Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None)))
+        engagements = (await db.scalars(q.offset(offset).limit(limit))).all()
     else:
         members = (
             await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))
@@ -43,55 +50,21 @@ async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, o
         eng_ids = [m.engagement_id for m in members]
         if not eng_ids:
             return []
-
-        org_memberships = (
-            await db.scalars(
-                select(OrganizationMember).where(OrganizationMember.user_id == user.id)
-            )
-        ).all()
-        org_ids = {m.organization_id for m in org_memberships}
-
-        engagements = (
-            await db.scalars(
-                select(Engagement).where(Engagement.id.in_(eng_ids)).offset(offset).limit(limit)
-            )
-        ).all()
-        engagements = [
-            e
-            for e in engagements
-            if getattr(e, "organization_id", None) is None or e.organization_id in org_ids
-        ]
+        q = select(Engagement).where(Engagement.id.in_(eng_ids))
+        if org_ids:
+            q = q.where((Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None)))
+        engagements = (await db.scalars(q.offset(offset).limit(limit))).all()
     return [EngagementResponse.model_validate(e) for e in engagements]
 
 
 @router.post("", response_model=EngagementResponse, status_code=status.HTTP_201_CREATED)
 async def create_engagement(payload: EngagementCreate, user: CurrentUser, db: DbSession):
-    organization_id = payload.organization_id
-    if organization_id is not None:
-        # Allow if global admin or org member
-        is_global_admin = any(r.name == RoleName.admin for r in user.roles)
-        if not is_global_admin:
-            membership = await db.scalar(
-                select(OrganizationMember).where(
-                    OrganizationMember.organization_id == organization_id,
-                    OrganizationMember.user_id == user.id,
-                )
-            )
-            if membership is None:
-                organization_id = None
-    else:
-        # Best-effort default org for user (first membership)
-        membership = await db.scalar(
-            select(OrganizationMember).where(OrganizationMember.user_id == user.id)
-        )
-        if membership is not None:
-            organization_id = membership.organization_id
-
+    org = await get_or_create_default_organization(db, user)
     engagement = Engagement(
         name=payload.name,
         mode=EngagementMode(payload.mode),
         owner_id=user.id,
-        organization_id=organization_id,
+        organization_id=org.id,
     )
     db.add(engagement)
     await db.flush()
@@ -104,8 +77,8 @@ async def create_engagement(payload: EngagementCreate, user: CurrentUser, db: Db
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
-        organization_id=organization_id,
-        metadata={"name": engagement.name},
+        organization_id=org.id,
+        metadata={"name": engagement.name, "organization_id": str(org.id)},
         db=db,
     )
     await db.commit()
@@ -201,6 +174,56 @@ async def update_scope(
         db.add(entry)
     await db.commit()
     return {"status": "ok"}
+
+
+@router.post("/{engagement_id}/submit", response_model=EngagementResponse)
+async def submit_engagement(
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
+    user: CurrentUser,
+    db: DbSession,
+):
+    engagement.status = EngagementStatus.pending_approval
+    await AuditService.log(
+        actor_id=user.id,
+        action="engagement.submit",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        metadata={"status": engagement.status.value},
+        db=db,
+    )
+    await db.commit()
+    await db.refresh(engagement)
+    return EngagementResponse.model_validate(engagement)
+
+
+@router.post("/{engagement_id}/approve", response_model=EngagementResponse)
+async def approve_engagement(
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.admin))
+    ],
+    user: CurrentUser,
+    db: DbSession,
+):
+    if engagement.status not in (EngagementStatus.pending_approval, EngagementStatus.draft, EngagementStatus.approved):
+        raise HTTPException(status_code=409, detail="Engagement not in approvable state")
+    engagement.status = EngagementStatus.approved
+    engagement.approved_by = user.id
+    engagement.approved_at = datetime.now(UTC)
+    await AuditService.log(
+        actor_id=user.id,
+        action="engagement.approve",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        metadata={"approver_id": str(user.id), "status": engagement.status.value},
+        db=db,
+    )
+    await db.commit()
+    await db.refresh(engagement)
+    return EngagementResponse.model_validate(engagement)
 
 
 @router.post(

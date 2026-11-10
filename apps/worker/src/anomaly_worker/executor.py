@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from typing import Any
 from uuid import UUID
 
@@ -124,14 +126,29 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
 
     stdout = getattr(runner_result, "stdout", "") or ""
     stderr = getattr(runner_result, "stderr", "") or ""
+    log_bytes = (stdout + "\n" + stderr).encode("utf-8", errors="replace")
+    sha = hashlib.sha256(log_bytes).hexdigest()
+    org_id = getattr(engagement, "organization_id", None) if engagement is not None else None
     ev = Evidence(
         run_id=run.id,
+        engagement_id=run.engagement_id,
+        organization_id=org_id,
         type=EvidenceType.log,
         storage_key=f"logs/{run.id}.txt",
+        sha256=sha,
+        collector="worker",
+        tool=run.tool,
+        tool_version=getattr(runner_result, "tool_version", None),
         metadata={
             "stdout": stdout,
             "stderr": stderr,
             "exit_code": getattr(runner_result, "exit_code", 0),
+            "sha256": sha,
+            "organization_id": str(org_id) if org_id else None,
+            "engagement_id": str(run.engagement_id),
+            "run_id": str(run.id),
+            "collector": "worker",
+            "tool": run.tool,
         },
     )
     db.add(ev)

@@ -45,15 +45,18 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    return JSONResponse(
-        status_code=exc.status_code, content={"success": False, "error": exc.detail}
-    )
+    request_id = getattr(getattr(request, "state", None), "request_id", None)
+    content = {"success": False, "error": exc.detail}
+    if request_id:
+        content["meta"] = {"request_id": request_id}
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    return JSONResponse(
-        status_code=422,
-        content={"success": False, "error": "Validation Error", "detail": exc.errors()},
-    )
+    request_id = getattr(getattr(request, "state", None), "request_id", None)
+    content = {"success": False, "error": "Validation Error", "detail": exc.errors()}
+    if request_id:
+        content["meta"] = {"request_id": request_id}
+    return JSONResponse(status_code=422, content=content)

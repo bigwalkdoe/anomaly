@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +31,10 @@ class EngagementResponse(BaseModel):
     status: str
     owner_id: UUID
     client_name: str | None = None
+    organization_id: UUID | None = None
+    workspace_id: UUID | None = None
+    approved_by: UUID | None = None
+    approved_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

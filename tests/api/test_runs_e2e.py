@@ -43,7 +43,7 @@ async def test_vertical_slice_engagement_run_finding_audit(client, db_session, m
     )
     db_session.add(p)
     await db_session.flush()
-    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
+    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id, status=__import__("anomaly_core.models", fromlist=["EngagementStatus"]).EngagementStatus.approved)
     db_session.add(eng)
     await db_session.flush()
     scope = Scope(engagement_id=eng.id)

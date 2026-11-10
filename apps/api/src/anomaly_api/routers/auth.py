@@ -14,6 +14,7 @@ from anomaly_core.auth import (
 )
 from anomaly_core.models import LoginAttempt, MFASecret, Role, RoleName, User
 from anomaly_core.rbac import ensure_default_rbac
+from anomaly_core.tenancy import get_user_memberships
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
@@ -21,6 +22,7 @@ from anomaly_api.deps import CurrentUser, DbSession, get_optional_user
 from anomaly_api.schemas.auth import (
     LoginRequest,
     LoginResponse,
+    MembershipResponse,
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
@@ -35,12 +37,22 @@ async def _ensure_roles(db: DbSession) -> None:
     await ensure_default_rbac(db)
 
 
-def _user_response(user: User) -> UserResponse:
+async def _user_response(user: User, db: DbSession) -> UserResponse:
+    memberships = await get_user_memberships(db, user)
     return UserResponse(
         id=user.id,
         email=user.email,
         name=user.name,
         roles=[role.name.value for role in user.roles],
+        memberships=[
+            MembershipResponse(
+                organization_id=m.organization_id,
+                workspace_id=m.workspace_id,
+                role=m.role,
+            )
+            for m in memberships
+        ],
+        organizations=list({m.organization_id for m in memberships}),
     )
 
 
@@ -182,8 +194,8 @@ async def logout(payload: RefreshRequest, db: DbSession) -> None:
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: CurrentUser) -> UserResponse:
-    return _user_response(user)
+async def me(user: CurrentUser, db: DbSession) -> UserResponse:
+    return await _user_response(user, db)
 
 
 @router.get("/verify")

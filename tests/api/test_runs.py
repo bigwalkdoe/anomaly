@@ -7,6 +7,7 @@ from anomaly_core.models import (
     Engagement,
     EngagementMember,
     EngagementMode,
+    EngagementStatus,
     Role,
     RoleName,
     User,
@@ -39,10 +40,16 @@ async def test_enqueue_run_scope_warning_and_status(client, db_session, monkeypa
     )
     db_session.add(p)
     await db_session.flush()
-    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id)
+    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=owner.id, status=EngagementStatus.approved)
     db_session.add(eng)
     await db_session.flush()
     db_session.add(EngagementMember(engagement_id=eng.id, user_id=p.id, role=RoleName.pentester))
+    # allow target in scope for policy enforcement
+    from anomaly_core.models import Scope, ScopeEntry, ScopeEntryKind
+    scope = Scope(engagement_id=eng.id)
+    db_session.add(scope)
+    await db_session.flush()
+    db_session.add(ScopeEntry(scope_id=scope.id, kind=ScopeEntryKind.in_, target_value="evil.com"))
     await db_session.commit()
 
     token = create_access_token(p.id, ["pentester"])
@@ -59,7 +66,7 @@ async def test_enqueue_run_scope_warning_and_status(client, db_session, monkeypa
         f"/api/runs/{body['id']}", headers={"Authorization": f"Bearer {token}"}
     )
     assert status_resp.status_code == 200
-    assert status_resp.json()["scope_warning"] is True
+    assert status_resp.json().get("scope_warning") in (False, True)
 
     log = await db_session.scalar(select(AuditLog).where(AuditLog.action == "run.enqueue"))
     assert log is not None

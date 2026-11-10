@@ -42,8 +42,9 @@ async def test_creating_engagement_writes_audit_row(client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_scope_warning_writes_audit_row(client, db_session):
+async def test_scope_policy_denial_writes_audit_row(client, db_session):
     from anomaly_core.auth import create_access_token
+    from anomaly_core.models import EngagementStatus, Scope, ScopeEntry, ScopeEntryKind
 
     admin_role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
     if admin_role is None:
@@ -58,8 +59,13 @@ async def test_scope_warning_writes_audit_row(client, db_session):
     )
     db_session.add(admin)
     await db_session.flush()
-    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=admin.id)
+    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=admin.id, status=EngagementStatus.approved)
     db_session.add(eng)
+    await db_session.flush()
+    scope = Scope(engagement_id=eng.id)
+    db_session.add(scope)
+    await db_session.flush()
+    db_session.add(ScopeEntry(scope_id=scope.id, kind=ScopeEntryKind.in_, target_value="allowed.com"))
     await db_session.commit()
 
     token = create_access_token(admin.id, ["admin"])
@@ -68,9 +74,9 @@ async def test_scope_warning_writes_audit_row(client, db_session):
         headers={"Authorization": f"Bearer {token}"},
         json={"tool": "nmap", "targets": ["evil.com"]},
     )
-    # Should be enqueued but with scope warning logged
-    assert resp.status_code in (200, 201, 202)
-    log = await db_session.scalar(select(AuditLog).where(AuditLog.action == "scope.warning"))
+    # Out-of-scope request must be denied by policy and audited
+    assert resp.status_code == 403
+    log = await db_session.scalar(select(AuditLog).where(AuditLog.action == "policy.denied"))
     assert log is not None
 
 

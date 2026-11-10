@@ -140,10 +140,12 @@ async def engagement_accessible(
 
     org_id = getattr(engagement, "organization_id", None)
     if org_id is not None:
+        from anomaly_core.models.tenancy import Membership
+
         org_member = await db.scalar(
-            select(OrganizationMember).where(
-                OrganizationMember.organization_id == org_id,
-                OrganizationMember.user_id == user.id,
+            select(Membership).where(
+                Membership.user_id == user.id,
+                Membership.organization_id == org_id,
             )
         )
         if org_member is None:

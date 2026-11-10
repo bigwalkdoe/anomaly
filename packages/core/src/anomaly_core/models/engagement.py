@@ -37,9 +37,13 @@ class EngagementMode(StrEnum):
 
 class EngagementStatus(StrEnum):
     draft = "draft"
+    pending_approval = "pending_approval"
+    approved = "approved"
     active = "active"
     paused = "paused"
     closed = "closed"
+    completed = "completed"
+    archived = "archived"
 
 
 class TargetType(StrEnum):
@@ -67,7 +71,13 @@ class Engagement(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -90,6 +100,10 @@ class Engagement(Base):
     rules_of_engagement: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -103,7 +117,8 @@ class Engagement(Base):
         nullable=False,
     )
 
-    owner: Mapped[User] = relationship("User", lazy="selectin")
+    owner: Mapped[User] = relationship("User", foreign_keys=[owner_id], lazy="selectin")
+    approver: Mapped[User | None] = relationship("User", foreign_keys=[approved_by], lazy="selectin")
     scope: Mapped[Scope | None] = relationship(
         "Scope",
         back_populates="engagement",

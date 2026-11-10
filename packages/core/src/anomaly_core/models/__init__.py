@@ -32,6 +32,7 @@ from .organization import Organization, OrganizationMember, OrganizationRole, Or
 from .playbook import Playbook
 from .playbook_step import PlaybookStep
 from .run import Run, RunStatus
+from .tenancy import Membership, Organization, Workspace
 from .token import RefreshToken
 from .user import (
     APIKey,
@@ -87,5 +88,7 @@ __all__ = [
     "CronSchedule",
     "MFASecret",
     "LoginAttempt",
+    "Organization",
+    "Workspace",
+    "Membership",
 ]
-from .finding import Tag  # noqa
