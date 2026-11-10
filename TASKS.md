@@ -4,9 +4,9 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 ## P0 — Correctness, security, and release blockers
 
-- [x] **Resolve Alembic migration lineage (multiple heads)** *(partially validated)*
-  - **Progress (2026-11-10):** removed duplicate parallel chain (`54816ee86f69`, `6bdfa4300d23`, `2b6309618aaf`, `b07b80459ce9`) from `packages/core/alembic/versions`; `alembic heads` now reports single head `f6b770b737bd (head)`.
-  - **Remaining:** local DB was not up to date and `alembic upgrade head` failed on existing schema (`relation "permissions" already exists`) — DB needs stamp/rebuild/sync against canonical head in this environment; verify `upgrade head`/`downgrade` on a representative clean DB and document canonical path.
+- [x] **Resolve Alembic migration lineage (multiple heads)** *(lineage resolved; DB sync partial)*
+  - **Progress (2026-11-10):** removed duplicate parallel chain from `packages/core/alembic/versions`; `alembic heads` reports single head **`f6b770b737bd (head)`**. Stamped dev DB to head (`alembic stamp head`, `alembic current` shows head).
+  - **Remaining:** `alembic check` reports target DB not up to date (model/schema drift vs migrations) and clean `upgrade head` on existing dev schema previously failed on pre-existing objects. Verify `upgrade head`/`downgrade` on a representative clean DB and document canonical path.
 
 - [x] **Achieve CI lint parity (Python)**
   - **Progress (2026-11-10):** fixed remaining Ruff issues (E501/E402/import cleanup) in tools/tests and migrated Pydantic `class Config` to `ConfigDict` where flagged; `ruff check .` passes.
@@ -18,10 +18,9 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 ## P1 — CI parity and quality gates
 
-- [ ] **Type checking parity** *(in progress)*
-  - **Progress (2026-11-10):** `mypy packages apps` reported 3 errors in 103 files; fixed `apps/cli/src/anomaly_cli/commands/runs.py`, `packages/tools/src/anomaly_tools/registry.py`, and `packages/ai/src/anomaly_ai/service.py`. Targeted `mypy` on fixed files passes; full CI-parity run not yet revalidated.
-  - **Actions:** re-run `mypy packages apps`, address remaining config/typing gaps incrementally.
-  - **Done when:** `mypy packages apps` passes (or agreed baseline enforced).
+- [x] **Type checking parity** *(validated)*
+  - **Progress (2026-11-10):** fixed initial 3 errors, then re-ran `mypy packages apps` → **Success: no issues found in 103 source files**. (Ruff lint also clean.) Web lint/build previously passed.
+  - **Note:** CI-equivalent environment parity still depends on reproducible full-suite and service setup.
 
 - [ ] **Security & dependency CI jobs** *(in progress)*
   - **Progress (2026-11-10):** `docker` runner image build succeeded (`docker build -t anomaly-runner:dev infra/runner`). `gitleaks detect --source . --no-git -v` attempt timed out (>120s) in this environment. `bandit`/`safety` CLI modules not installed locally.
@@ -55,8 +54,9 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 ## P2 — Hardening and hygiene
 
-- [ ] **Harden newly added CLI commands**
-  - Validate `config/engagements/findings/reports/runs/sync` against real API contracts; add mocked-HTTP tests for key flows.
+- [ ] **Harden newly added CLI commands** *(in progress)*
+  - **Progress (2026-11-10):** added mocked-HTTP CLI tests covering help/command discovery, config show/set/unset, engagements/findings list, runs start/status, reports generate, and sync status/spectre (`tests/cli/test_commands.py`).
+  - **Remaining:** validate against live API contracts/edge cases and expand coverage as needed.
 
 - [x] **Address Pydantic v2 deprecation warnings**
   - **Progress (2026-11-10):** migrated class-based `Config` to `ConfigDict(from_attributes=True)` in `apps/api/src/anomaly_api/schemas/engagement.py` and routers (`api_keys`, `findings`, `playbooks`, `runs`, `schedules`); targeted API AI tests now run without prior Pydantic config deprecation warnings.
