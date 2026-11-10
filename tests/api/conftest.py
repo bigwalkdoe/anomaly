@@ -9,8 +9,11 @@ from httpx import ASGITransport, AsyncClient
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_db():
+    from sqlalchemy import text
+
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
     async with SessionLocal() as session:
         await ensure_default_rbac(session)
