@@ -27,6 +27,11 @@ interface Run {
   scope_warning: boolean;
 }
 
+interface Engagement {
+  id: string;
+  name: string;
+}
+
 function RunStatusBadge({ value }: { value: string }) {
   const variant = statusVariant("run", value);
   return (
@@ -41,10 +46,27 @@ export default function RunsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiJson<Run[]>("/api/runs?limit=100")
-      .then(setRuns)
-      .catch(() => setRuns([]))
-      .finally(() => setLoading(false));
+    const load = async () => {
+      try {
+        const engagements = await apiJson<Engagement[]>("/api/engagements");
+        const allRuns: Run[] = [];
+        for (const eng of engagements.slice(0, 20)) {
+          try {
+            const runsForEng = await apiJson<Run[]>(`/api/engagements/${eng.id}/runs`);
+            allRuns.push(...runsForEng.map((r) => ({ ...r, engagement_id: eng.id })));
+          } catch {
+            // skip
+          }
+        }
+        allRuns.sort((a, b) => b.id.localeCompare(a.id));
+        setRuns(allRuns.slice(0, 100));
+      } catch {
+        setRuns([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
   }, []);
 
   return (
@@ -64,7 +86,7 @@ export default function RunsPage() {
               </p>
             </div>
             <Button asChild>
-              <Link href="/engagements/new">
+              <Link href="/runs/new">
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 New run
               </Link>
@@ -96,7 +118,7 @@ export default function RunsPage() {
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {run.id.slice(0, 8)}…
                       </TableCell>
-                      <TableCell className="font-medium">{run.tool}</TableCell>
+                      <TableCell className="font-medium">{(run as { tool?: string }).tool || "Run"}</TableCell>
                       <TableCell>
                         <RunStatusBadge value={run.status} />
                       </TableCell>

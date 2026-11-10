@@ -33,12 +33,12 @@ function LoginForm() {
     setLoading(true);
     setError("");
     try {
-      const success = await login(email, password);
-      if (success) {
+      const result = await login(email, password);
+      if (result.ok) {
         router.push(next && next.startsWith("/") ? next : "/");
         router.refresh();
       } else {
-        setError("Invalid email or password.");
+        setError(result.error || "Invalid email or password.");
       }
     } catch {
       setError("Sign in failed. Check the service and try again.");
