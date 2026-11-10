@@ -46,11 +46,15 @@ async def test_get_provider_defaults_from_settings(monkeypatch):
     monkeypatch.setenv("MINIO_SECRET_KEY", "miniosecret")
     # clear cached settings if any
     import anomaly_core.config as cfg
-    cfg._settings = None
 
-    p = get_provider()
-    assert p.name == "ollama"
-    assert getattr(p, "model", None) == "llama3.1"
+    old = cfg._settings
+    cfg._settings = None
+    try:
+        p = get_provider()
+        assert p.name == "ollama"
+        assert getattr(p, "model", None) == "llama3.1"
+    finally:
+        cfg._settings = old
 
 
 @pytest.mark.asyncio
