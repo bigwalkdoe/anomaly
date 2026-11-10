@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import typer
 from rich.console import Console
@@ -30,7 +32,7 @@ def start(
     if target:
         target_list.append(target)
 
-    params = {}
+    params: dict[str, Any] = {}
     for p in (param or []):
         if "=" not in p:
             console.print(f"[red]Invalid param '{p}': use key=value[/red]")

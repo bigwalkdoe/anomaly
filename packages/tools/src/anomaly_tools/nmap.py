@@ -104,7 +104,10 @@ class NmapTool:
 def parse_nmap_xml(
     xml_text: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
 ) -> ToolResult:
-    """Legacy/compat parser returning ToolResult with parsed_findings (dicts) and discovered_targets."""
+    """Legacy/compat parser returning ToolResult.
+
+    Includes parsed_findings (dicts) and discovered_targets.
+    """
     findings: list[dict[str, Any]] = []
     try:
         root = ET.fromstring(xml_text)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EngagementCreate(BaseModel):
@@ -29,8 +29,7 @@ class EngagementResponse(BaseModel):
     owner_id: UUID
     client_name: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScopeEntryCreate(BaseModel):
@@ -53,5 +52,4 @@ class TargetResponse(BaseModel):
     value: str
     type: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

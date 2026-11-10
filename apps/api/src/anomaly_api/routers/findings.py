@@ -7,7 +7,7 @@ from anomaly_core.audit import AuditService
 from anomaly_core.models import Engagement, Finding, FindingSeverity, FindingStatus, RoleName
 from anomaly_core.rbac import engagement_accessible, get_membership, has_role
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
@@ -38,8 +38,7 @@ class FindingResponse(BaseModel):
     status: str
     description: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FindingStatusTransition(BaseModel):

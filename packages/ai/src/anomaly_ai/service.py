@@ -183,7 +183,7 @@ class AIService:
                         "usage": resp.usage,
                         "objective_len": len(objective or ""),
                         "parse_success": parse_success,
-                        "suggestion_count": len(result["suggestions"]),
+                        "suggestion_count": len(suggestions),
                         "prompt": _truncate(prompt_text),
                         "response": _truncate(raw_text),
                     },
