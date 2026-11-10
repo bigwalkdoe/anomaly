@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
 from anomaly_core.audit import AuditService
@@ -8,7 +9,6 @@ from anomaly_core.models import (
     EngagementMember,
     EngagementMode,
     EngagementStatus,
-    OrganizationMember,
     RoleName,
     Scope,
     ScopeEntry,
@@ -17,7 +17,6 @@ from anomaly_core.models import (
     TargetType,
 )
 from anomaly_core.tenancy import get_or_create_default_organization, get_user_memberships
-from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
@@ -41,7 +40,9 @@ async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, o
     if any(r.name == RoleName.admin for r in user.roles):
         q = select(Engagement)
         if org_ids:
-            q = q.where((Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None)))
+            q = q.where(
+                (Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None))
+            )
         engagements = (await db.scalars(q.offset(offset).limit(limit))).all()
     else:
         members = (
@@ -52,7 +53,9 @@ async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, o
             return []
         q = select(Engagement).where(Engagement.id.in_(eng_ids))
         if org_ids:
-            q = q.where((Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None)))
+            q = q.where(
+                (Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None))
+            )
         engagements = (await db.scalars(q.offset(offset).limit(limit))).all()
     return [EngagementResponse.model_validate(e) for e in engagements]
 
@@ -207,7 +210,11 @@ async def approve_engagement(
     user: CurrentUser,
     db: DbSession,
 ):
-    if engagement.status not in (EngagementStatus.pending_approval, EngagementStatus.draft, EngagementStatus.approved):
+    if engagement.status not in (
+        EngagementStatus.pending_approval,
+        EngagementStatus.draft,
+        EngagementStatus.approved,
+    ):
         raise HTTPException(status_code=409, detail="Engagement not in approvable state")
     engagement.status = EngagementStatus.approved
     engagement.approved_by = user.id

@@ -34,8 +34,7 @@ def generate(
         raise typer.Exit(1)
     data = r.json()
     console.print(
-        f"[green]Report generated[/green] format={data['format']} "
-        f"findings={data['finding_count']}"
+        f"[green]Report generated[/green] format={data['format']} findings={data['finding_count']}"
     )
     console.print(data["content"])
 

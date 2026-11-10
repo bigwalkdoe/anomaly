@@ -18,7 +18,9 @@ def _slugify(value: str) -> str:
 async def get_or_create_default_organization(db: AsyncSession, user: User) -> Organization:
     """Ensure the user has at least one organization membership; create a default org if missing."""
     existing = await db.scalar(
-        select(Membership).where(Membership.user_id == user.id).order_by(Membership.created_at.asc())
+        select(Membership)
+        .where(Membership.user_id == user.id)
+        .order_by(Membership.created_at.asc())
     )
     if existing is not None:
         org = await db.get(Organization, existing.organization_id)
@@ -49,7 +51,9 @@ async def get_user_memberships(db: AsyncSession, user: User) -> list[Membership]
     return list(rows)
 
 
-async def user_in_organization(db: AsyncSession, user_id: uuid.UUID, organization_id: uuid.UUID) -> bool:
+async def user_in_organization(
+    db: AsyncSession, user_id: uuid.UUID, organization_id: uuid.UUID
+) -> bool:
     row = await db.scalar(
         select(Membership).where(
             Membership.user_id == user_id,
@@ -57,4 +61,3 @@ async def user_in_organization(db: AsyncSession, user_id: uuid.UUID, organizatio
         )
     )
     return row is not None
-

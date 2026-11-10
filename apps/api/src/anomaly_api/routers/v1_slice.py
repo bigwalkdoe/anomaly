@@ -1,21 +1,28 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
-from pydantic import BaseModel
 from uuid import UUID
 
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
-from anomaly_core.models import Engagement, EngagementMember, EngagementStatus, RoleName, Run, RunStatus, Scope, ScopeEntry, ScopeEntryKind
+from anomaly_core.models import (
+    Engagement,
+    EngagementMember,
+    EngagementStatus,
+    RoleName,
+    Run,
+    RunStatus,
+    Scope,
+)
 from anomaly_core.scope import check_scope
 from anomaly_core.tenancy import get_or_create_default_organization
 from anomaly_reporting import ReportGenerator
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.routers.auth import me as auth_me
-from anomaly_api.schemas.auth import UserResponse
 from anomaly_api.schemas.engagement import EngagementCreate, EngagementResponse
 
 
@@ -37,32 +44,46 @@ async def v1_me(request: Request, user: CurrentUser, db: DbSession):
 
 
 @router.get("/engagements")
-async def v1_list_engagements(request: Request, user: CurrentUser, db: DbSession, limit: int = 100, offset: int = 0):
+async def v1_list_engagements(
+    request: Request, user: CurrentUser, db: DbSession, limit: int = 100, offset: int = 0
+):
     # reuse logic similar to legacy
     from anomaly_core.tenancy import get_user_memberships
+
     memberships = await get_user_memberships(db, user)
     org_ids = {m.organization_id for m in memberships}
     if any(r.name == RoleName.admin for r in user.roles):
         q = select(Engagement)
         if org_ids:
-            q = q.where((Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None)))
+            q = q.where(
+                (Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None))
+            )
         engagements = (await db.scalars(q.offset(offset).limit(limit))).all()
     else:
-        members = (await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))).all()
+        members = (
+            await db.scalars(select(EngagementMember).where(EngagementMember.user_id == user.id))
+        ).all()
         eng_ids = [m.engagement_id for m in members]
         if not eng_ids:
             return _envelope(request, [])
         q = select(Engagement).where(Engagement.id.in_(eng_ids))
         if org_ids:
-            q = q.where((Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None)))
+            q = q.where(
+                (Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None))
+            )
         engagements = (await db.scalars(q.offset(offset).limit(limit))).all()
-    return _envelope(request, [EngagementResponse.model_validate(e).model_dump(mode="json") for e in engagements])
+    return _envelope(
+        request, [EngagementResponse.model_validate(e).model_dump(mode="json") for e in engagements]
+    )
 
 
 @router.post("/engagements", status_code=status.HTTP_201_CREATED)
-async def v1_create_engagement(request: Request, payload: EngagementCreate, user: CurrentUser, db: DbSession):
+async def v1_create_engagement(
+    request: Request, payload: EngagementCreate, user: CurrentUser, db: DbSession
+):
     org = await get_or_create_default_organization(db, user)
     from anomaly_core.models import EngagementMode
+
     engagement = Engagement(
         name=payload.name,
         mode=EngagementMode(payload.mode),
@@ -91,12 +112,19 @@ async def v1_create_engagement(request: Request, payload: EngagementCreate, user
 @router.post("/engagements/{engagement_id}/approve")
 async def v1_approve_engagement(
     request: Request,
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.admin))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.admin))
+    ],
     user: CurrentUser,
     db: DbSession,
 ):
     from datetime import UTC, datetime
-    if engagement.status not in (EngagementStatus.pending_approval, EngagementStatus.draft, EngagementStatus.approved):
+
+    if engagement.status not in (
+        EngagementStatus.pending_approval,
+        EngagementStatus.draft,
+        EngagementStatus.approved,
+    ):
         raise HTTPException(status_code=409, detail="Engagement not in approvable state")
     engagement.status = EngagementStatus.approved
     engagement.approved_by = user.id
@@ -124,14 +152,20 @@ class V1RunCreate(BaseModel):
 @router.post("/engagements/{engagement_id}/runs", status_code=status.HTTP_202_ACCEPTED)
 async def v1_create_run(
     request: Request,
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     payload: V1RunCreate,
     user: CurrentUser,
     db: DbSession,
 ):
     # Policy gate (same as legacy)
     if getattr(engagement, "status", None) is not None:
-        status_val = engagement.status.value if hasattr(engagement.status, "value") else str(engagement.status)
+        status_val = (
+            engagement.status.value
+            if hasattr(engagement.status, "value")
+            else str(engagement.status)
+        )
         if status_val not in ("approved", "active"):
             await AuditService.log(
                 actor_id=user.id,
@@ -139,7 +173,11 @@ async def v1_create_run(
                 resource_type="engagement",
                 resource_id=engagement.id,
                 engagement_id=engagement.id,
-                metadata={"reason": "engagement_not_approved", "status": status_val, "op": "assessment.request"},
+                metadata={
+                    "reason": "engagement_not_approved",
+                    "status": status_val,
+                    "op": "assessment.request",
+                },
                 db=db,
             )
             await db.commit()
@@ -148,6 +186,7 @@ async def v1_create_run(
     targets = payload.targets
     try:
         from sqlalchemy.orm import selectinload
+
         res = await db.execute(
             select(Engagement)
             .options(selectinload(Engagement.scope).selectinload(Scope.entries))
@@ -166,7 +205,11 @@ async def v1_create_run(
             resource_type="engagement",
             resource_id=engagement.id,
             engagement_id=engagement.id,
-            metadata={"reason": "out_of_scope", "targets": targets, "out_of_scope": result.out_of_scope},
+            metadata={
+                "reason": "out_of_scope",
+                "targets": targets,
+                "out_of_scope": result.out_of_scope,
+            },
             db=db,
         )
         await db.commit()
@@ -195,16 +238,20 @@ async def v1_create_run(
     await db.refresh(run)
 
     import os
+
     if os.environ.get("RUNNER_MODE") == "inline" or os.environ.get("ANOMALY_INLINE_RUNS") == "1":
         try:
             from anomaly_worker.executor import execute_run
+
             async with SessionLocal() as db2:
                 await execute_run(db2, run.id)
             await db.refresh(run)
         except Exception:
             pass
 
-    return _envelope(request, {"id": str(run.id), "status": run.status.value, "scope_warning": run.scope_warning})
+    return _envelope(
+        request, {"id": str(run.id), "status": run.status.value, "scope_warning": run.scope_warning}
+    )
 
 
 @router.get("/runs/{run_id}")
@@ -216,9 +263,12 @@ async def v1_get_run(request: Request, run_id: UUID, user: CurrentUser, db: DbSe
     if engagement is None:
         raise HTTPException(status_code=404, detail="Run not found")
     from anomaly_core.rbac import engagement_accessible
+
     if not await engagement_accessible(db, user, engagement):
         raise HTTPException(status_code=404, detail="Run not found")
-    return _envelope(request, {"id": str(run.id), "status": run.status.value, "scope_warning": run.scope_warning})
+    return _envelope(
+        request, {"id": str(run.id), "status": run.status.value, "scope_warning": run.scope_warning}
+    )
 
 
 @router.get("/engagements/{engagement_id}/reports/generate")
@@ -230,17 +280,32 @@ async def v1_generate_report(
     format: str = "markdown",
 ):
     from anomaly_core.models import Evidence, Finding
+
     engagement = await db.get(Engagement, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
-    findings = (await db.scalars(select(Finding).where(Finding.engagement_id == engagement_id))).all()
+    findings = (
+        await db.scalars(select(Finding).where(Finding.engagement_id == engagement_id))
+    ).all()
     runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement_id))).all()
-    evidence_rows = (await db.scalars(select(Evidence).where(Evidence.engagement_id == engagement_id))).all()
+    evidence_rows = (
+        await db.scalars(select(Evidence).where(Evidence.engagement_id == engagement_id))
+    ).all()
     if not evidence_rows and runs:
         run_ids = [r.id for r in runs]
-        evidence_rows = (await db.scalars(select(Evidence).where(Evidence.run_id.in_(run_ids)))).all() if run_ids else []
+        evidence_rows = (
+            (await db.scalars(select(Evidence).where(Evidence.run_id.in_(run_ids)))).all()
+            if run_ids
+            else []
+        )
     findings_data = [
-        {"title": f.title, "severity": f.severity.value, "description": f.description, "status": f.status.value, "remediation": f.remediation or ""}
+        {
+            "title": f.title,
+            "severity": f.severity.value,
+            "description": f.description,
+            "status": f.status.value,
+            "remediation": f.remediation or "",
+        }
         for f in findings
     ]
     run_ids_str = [str(r.id) for r in runs]
@@ -257,6 +322,7 @@ async def v1_generate_report(
         "evidence_sha256": ev_shas,
     }
     gen = ReportGenerator()
+    content: str | bytes
     if format == "html":
         content = gen.generate_html(engagement.name, findings_data, context=context)
     elif format == "pdf":

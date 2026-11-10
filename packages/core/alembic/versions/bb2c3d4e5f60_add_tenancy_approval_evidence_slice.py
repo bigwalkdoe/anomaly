@@ -10,7 +10,6 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "bb2c3d4e5f60"
@@ -40,7 +39,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("slug"),
     )
-    op.create_index(op.f("ix_organizations_created_at"), "organizations", ["created_at"], unique=False)
+    op.create_index(
+        op.f("ix_organizations_created_at"), "organizations", ["created_at"], unique=False
+    )
     op.create_index(op.f("ix_organizations_slug"), "organizations", ["slug"], unique=True)
 
     op.create_table(
@@ -56,7 +57,9 @@ def upgrade() -> None:
         sa.UniqueConstraint("organization_id", "slug", name="uq_workspace_org_slug"),
     )
     op.create_index(op.f("ix_workspaces_created_at"), "workspaces", ["created_at"], unique=False)
-    op.create_index(op.f("ix_workspaces_organization_id"), "workspaces", ["organization_id"], unique=False)
+    op.create_index(
+        op.f("ix_workspaces_organization_id"), "workspaces", ["organization_id"], unique=False
+    )
     op.create_index(op.f("ix_workspaces_slug"), "workspaces", ["slug"], unique=False)
 
     op.create_table(
@@ -71,22 +74,36 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("user_id", "organization_id", "workspace_id", name="uq_membership_user_org_ws"),
+        sa.UniqueConstraint(
+            "user_id", "organization_id", "workspace_id", name="uq_membership_user_org_ws"
+        ),
     )
     op.create_index(op.f("ix_memberships_created_at"), "memberships", ["created_at"], unique=False)
-    op.create_index(op.f("ix_memberships_organization_id"), "memberships", ["organization_id"], unique=False)
+    op.create_index(
+        op.f("ix_memberships_organization_id"), "memberships", ["organization_id"], unique=False
+    )
     op.create_index(op.f("ix_memberships_role"), "memberships", ["role"], unique=False)
     op.create_index(op.f("ix_memberships_user_id"), "memberships", ["user_id"], unique=False)
-    op.create_index(op.f("ix_memberships_workspace_id"), "memberships", ["workspace_id"], unique=False)
+    op.create_index(
+        op.f("ix_memberships_workspace_id"), "memberships", ["workspace_id"], unique=False
+    )
 
     # Engagement tenancy & approval fields
     op.add_column("engagements", sa.Column("organization_id", sa.UUID(), nullable=True))
     op.add_column("engagements", sa.Column("workspace_id", sa.UUID(), nullable=True))
     op.add_column("engagements", sa.Column("approved_by", sa.UUID(), nullable=True))
-    op.add_column("engagements", sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True))
-    op.create_index(op.f("ix_engagements_organization_id"), "engagements", ["organization_id"], unique=False)
-    op.create_index(op.f("ix_engagements_workspace_id"), "engagements", ["workspace_id"], unique=False)
-    op.create_index(op.f("ix_engagements_approved_by"), "engagements", ["approved_by"], unique=False)
+    op.add_column(
+        "engagements", sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True)
+    )
+    op.create_index(
+        op.f("ix_engagements_organization_id"), "engagements", ["organization_id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_engagements_workspace_id"), "engagements", ["workspace_id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_engagements_approved_by"), "engagements", ["approved_by"], unique=False
+    )
     op.create_foreign_key(
         "fk_engagements_organization_id_organizations",
         "engagements",
@@ -125,7 +142,9 @@ def upgrade() -> None:
     op.add_column("evidence", sa.Column("collector", sa.String(length=255), nullable=True))
     op.add_column("evidence", sa.Column("tool", sa.String(length=255), nullable=True))
     op.add_column("evidence", sa.Column("tool_version", sa.String(length=100), nullable=True))
-    op.create_index(op.f("ix_evidence_organization_id"), "evidence", ["organization_id"], unique=False)
+    op.create_index(
+        op.f("ix_evidence_organization_id"), "evidence", ["organization_id"], unique=False
+    )
     op.create_index(op.f("ix_evidence_engagement_id"), "evidence", ["engagement_id"], unique=False)
     op.create_index(op.f("ix_evidence_sha256"), "evidence", ["sha256"], unique=False)
     op.create_foreign_key(
@@ -162,7 +181,9 @@ def downgrade() -> None:
 
     op.drop_constraint("fk_engagements_approved_by_users", "engagements", type_="foreignkey")
     op.drop_constraint("fk_engagements_workspace_id_workspaces", "engagements", type_="foreignkey")
-    op.drop_constraint("fk_engagements_organization_id_organizations", "engagements", type_="foreignkey")
+    op.drop_constraint(
+        "fk_engagements_organization_id_organizations", "engagements", type_="foreignkey"
+    )
     op.drop_index(op.f("ix_engagements_approved_by"), table_name="engagements")
     op.drop_index(op.f("ix_engagements_workspace_id"), table_name="engagements")
     op.drop_index(op.f("ix_engagements_organization_id"), table_name="engagements")

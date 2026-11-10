@@ -37,11 +37,11 @@ from anomaly_api.routers import (
     tags,
     upload,
     users,
+    v1_slice,
     vulnerabilities,
     webhooks,
     ws,
 )
-from anomaly_api.routers import v1_slice
 
 tags_metadata = [
     {

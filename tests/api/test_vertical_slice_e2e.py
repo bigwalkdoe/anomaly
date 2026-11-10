@@ -1,24 +1,15 @@
 from __future__ import annotations
 
-import hashlib
 import uuid
 
 import pytest
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import (
     AuditLog,
-    Engagement,
     EngagementMember,
-    EngagementMode,
     Evidence,
-    EvidenceType,
     Role,
     RoleName,
-    Run,
-    RunStatus,
-    Scope,
-    ScopeEntry,
-    ScopeEntryKind,
     User,
 )
 from anomaly_core.runner import FakeRunner, RunResult
@@ -75,12 +66,26 @@ async def test_vertical_slice_end_to_end(client, db_session, monkeypatch):
     org_id = eng.get("organization_id")
 
     # Add member and ensure org membership for tenant access
-    db_session.add(EngagementMember(engagement_id=uuid.UUID(eng_id), user_id=pentester.id, role=RoleName.pentester))
+    db_session.add(
+        EngagementMember(
+            engagement_id=uuid.UUID(eng_id), user_id=pentester.id, role=RoleName.pentester
+        )
+    )
     if org_id:
         from anomaly_core.models import Membership
-        exists = await db_session.scalar(select(Membership).where(Membership.user_id == pentester.id, Membership.organization_id == uuid.UUID(str(org_id))))
+
+        exists = await db_session.scalar(
+            select(Membership).where(
+                Membership.user_id == pentester.id,
+                Membership.organization_id == uuid.UUID(str(org_id)),
+            )
+        )
         if not exists:
-            db_session.add(Membership(user_id=pentester.id, organization_id=uuid.UUID(str(org_id)), role="member"))
+            db_session.add(
+                Membership(
+                    user_id=pentester.id, organization_id=uuid.UUID(str(org_id)), role="member"
+                )
+            )
     await db_session.commit()
 
     scope_resp = await client.put(
@@ -95,12 +100,18 @@ async def test_vertical_slice_end_to_end(client, db_session, monkeypatch):
     submit = await client.post(f"/api/engagements/{eng_id}/submit", headers=headers_owner, json={})
     if submit.status_code == 404:
         # fallback: status transition
-        submit = await client.patch(f"/api/engagements/{eng_id}", headers=headers_owner, json={"status": "pending_approval"})
+        submit = await client.patch(
+            f"/api/engagements/{eng_id}", headers=headers_owner, json={"status": "pending_approval"}
+        )
     assert submit.status_code in (200, 201, 202)
 
-    approve = await client.post(f"/api/engagements/{eng_id}/approve", headers=headers_owner, json={})
+    approve = await client.post(
+        f"/api/engagements/{eng_id}/approve", headers=headers_owner, json={}
+    )
     if approve.status_code == 404:
-        approve = await client.patch(f"/api/engagements/{eng_id}", headers=headers_owner, json={"status": "approved"})
+        approve = await client.patch(
+            f"/api/engagements/{eng_id}", headers=headers_owner, json={"status": "approved"}
+        )
     assert approve.status_code == 200
     approved = approve.json()
     assert approved.get("status") in ("approved", "active")
@@ -114,7 +125,8 @@ async def test_vertical_slice_end_to_end(client, db_session, monkeypatch):
     assert approval_audit is not None
 
     # Request assessment - must be policy+scope validated and require approval (step 4)
-    # unapproved/out-of-scope would be denied (covered in focused tests), in-scope approved should enqueue
+    # unapproved/out-of-scope would be denied (covered in focused tests);
+    # in-scope approved should enqueue
     runner = FakeRunner(RunResult(exit_code=0, stdout="open port 80", stderr=""))
     monkeypatch.setattr("anomaly_worker.executor.FakeRunner", lambda: runner)
     # if implementation uses injected runner path differently, inline mode with stub is acceptable
@@ -133,7 +145,9 @@ async def test_vertical_slice_end_to_end(client, db_session, monkeypatch):
     assert run_get.json().get("status") in ("succeeded", "completed", "queued", "running")
 
     # Evidence preserved with checksum+provenance (step 7)
-    ev_rows = (await db_session.scalars(select(Evidence).where(Evidence.run_id == uuid.UUID(run_id)))).all()
+    ev_rows = (
+        await db_session.scalars(select(Evidence).where(Evidence.run_id == uuid.UUID(run_id)))
+    ).all()
     assert len(ev_rows) >= 1
     ev = ev_rows[0]
     meta = ev.metadata or {}

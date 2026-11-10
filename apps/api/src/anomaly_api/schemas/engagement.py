@@ -31,7 +31,6 @@ class EngagementResponse(BaseModel):
     status: str
     owner_id: UUID
     client_name: str | None = None
-    organization_id: UUID | None = None
     workspace_id: UUID | None = None
     approved_by: UUID | None = None
     approved_at: datetime | None = None

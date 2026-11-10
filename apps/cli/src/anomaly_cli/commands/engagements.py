@@ -93,8 +93,7 @@ def target(
         raise typer.Exit(1)
     data = r.json()
     console.print(
-        f"[green]Target added[/green] ID={data['id']} "
-        f"value={data['value']} type={data['type']}"
+        f"[green]Target added[/green] ID={data['id']} value={data['value']} type={data['type']}"
     )
 
 

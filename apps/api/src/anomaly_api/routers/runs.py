@@ -58,7 +58,11 @@ async def create_run(
 ):
     # Policy gate: engagement must be approved/active for assessment execution
     if getattr(engagement, "status", None) is not None:
-        status_val = engagement.status.value if hasattr(engagement.status, "value") else str(engagement.status)
+        status_val = (
+            engagement.status.value
+            if hasattr(engagement.status, "value")
+            else str(engagement.status)
+        )
         if status_val not in ("approved", "active"):
             await AuditService.log(
                 actor_id=user.id,
@@ -66,7 +70,11 @@ async def create_run(
                 resource_type="engagement",
                 resource_id=engagement.id,
                 engagement_id=engagement.id,
-                metadata={"reason": "engagement_not_approved", "status": status_val, "op": "assessment.request"},
+                metadata={
+                    "reason": "engagement_not_approved",
+                    "status": status_val,
+                    "op": "assessment.request",
+                },
                 db=db,
             )
             await db.commit()
@@ -97,7 +105,11 @@ async def create_run(
             resource_type="engagement",
             resource_id=engagement.id,
             engagement_id=engagement.id,
-            metadata={"reason": "out_of_scope", "targets": targets, "out_of_scope": result.out_of_scope},
+            metadata={
+                "reason": "out_of_scope",
+                "targets": targets,
+                "out_of_scope": result.out_of_scope,
+            },
             db=db,
         )
         await db.commit()

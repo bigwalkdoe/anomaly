@@ -70,10 +70,17 @@ def test_ai_suggest_tools_fallback(monkeypatch):
     runner = CliRunner()
 
     def fake_post(url, headers=None, json=None, timeout=None):
-        return Resp(200, {
-            "provider": "fake", "model": "m", "parse_success": False, "notes": None,
-            "raw": "use nmap manually", "suggestions": []
-        })
+        return Resp(
+            200,
+            {
+                "provider": "fake",
+                "model": "m",
+                "parse_success": False,
+                "notes": None,
+                "raw": "use nmap manually",
+                "suggestions": [],
+            },
+        )
 
     monkeypatch.setattr("anomaly_cli.commands.ai.httpx.post", fake_post)
     result = runner.invoke(app, ["ai", "suggest-tools", "--objective", "scan host"])

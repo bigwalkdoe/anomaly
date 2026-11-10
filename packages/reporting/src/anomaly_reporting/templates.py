@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 
-def markdown_template(engagement_name: str, findings: list[dict], context: dict[str, Any] | None = None) -> str:
+def markdown_template(
+    engagement_name: str, findings: list[dict], context: dict[str, Any] | None = None
+) -> str:
     ctx = context or {}
     lines = [f"# Report: {engagement_name}", ""]
     if ctx:

@@ -59,13 +59,20 @@ async def test_scope_policy_denial_writes_audit_row(client, db_session):
     )
     db_session.add(admin)
     await db_session.flush()
-    eng = Engagement(name="E1", mode=EngagementMode.own_infra, owner_id=admin.id, status=EngagementStatus.approved)
+    eng = Engagement(
+        name="E1",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        status=EngagementStatus.approved,
+    )
     db_session.add(eng)
     await db_session.flush()
     scope = Scope(engagement_id=eng.id)
     db_session.add(scope)
     await db_session.flush()
-    db_session.add(ScopeEntry(scope_id=scope.id, kind=ScopeEntryKind.in_, target_value="allowed.com"))
+    db_session.add(
+        ScopeEntry(scope_id=scope.id, kind=ScopeEntryKind.in_, target_value="allowed.com")
+    )
     await db_session.commit()
 
     token = create_access_token(admin.id, ["admin"])
