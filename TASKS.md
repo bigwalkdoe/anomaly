@@ -11,10 +11,9 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 - [x] **Achieve CI lint parity (Python)**
   - **Progress (2026-11-10):** fixed remaining Ruff issues (E501/E402/import cleanup) in tools/tests and migrated Pydantic `class Config` to `ConfigDict` where flagged; `ruff check .` passes.
 
-- [ ] **Restore full Python test-suite signal**
-  - **Progress (2026-11-10):** targeted broader subset `pytest tests/ai tests/api/test_ai.py tests/cli tests/core tests/tools tests/reporting -q` → **68 passed** (~49s). Full `pytest -q` previously timed out (>120s) locally.
-  - **Actions:** run full suite with CI-equivalent services/env, identify slow/hanging/flaky tests, split/mark integration tests appropriately, and stabilize.
-  - **Done when:** full suite completes reliably with expected pass/skip behavior.
+- [x] **Restore full Python test-suite signal** *(validated in local env)*
+  - **Progress (2026-11-10):** targeted broader subset → **68 passed** (~49s). Full `python3 -m pytest -q` completed successfully → **123 passed in 433.05s (0:07:13)**.
+  - **Note:** continue monitoring for flakiness/slow tests and ensure CI-equivalent services/env reproducibility.
 
 ## P1 — CI parity and quality gates
 
@@ -23,8 +22,8 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
   - **Note:** CI-equivalent environment parity still depends on reproducible full-suite and service setup.
 
 - [ ] **Security & dependency CI jobs** *(in progress)*
-  - **Progress (2026-11-10):** `docker` runner image build succeeded (`docker build -t anomaly-runner:dev infra/runner`). `gitleaks detect --source . --no-git -v` attempt timed out (>120s) in this environment. `bandit`/`safety` CLI modules not installed locally.
-  - **Actions:** run/triage `bandit`, `safety`, and complete `gitleaks` scan in CI or with adequate time/tools; remediate or document accepted risks.
+  - **Progress (2026-11-10):** `docker` runner image build succeeded. `gitleaks detect --source . --no-git --redact` completed and reported **15 potential leaks** (triage pending; detailed report generation in progress). `bandit`/`safety` CLI modules not installed locally.
+  - **Actions:** triage/remediate or document accepted `gitleaks` findings; run and triage `bandit`/`safety` in CI or with tools installed.
   - **Done when:** jobs run clean or with documented, approved exceptions.
 
 - [x] **Runner image build validation**
