@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Sidebar, TopNav } from "@/components/layout/layout";
@@ -32,17 +32,17 @@ export default function FindingDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     apiJson<Finding>(`/api/findings/${id}`)
       .then(setFinding)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load finding"))
       .finally(() => setLoading(false));
-  };
+  }, [id]);
 
   useEffect(() => {
     load();
-  }, [id]);
+  }, [load]);
 
   const updateStatus = async (status: string) => {
     if (!finding) return;
