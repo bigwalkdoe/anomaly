@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EngagementCreate(BaseModel):
@@ -12,6 +12,7 @@ class EngagementCreate(BaseModel):
     status: str | None = Field(default="draft")
     client_name: str | None = None
     rules_of_engagement: str | None = None
+    organization_id: UUID | None = None
 
 
 class EngagementUpdate(BaseModel):
@@ -24,6 +25,7 @@ class EngagementUpdate(BaseModel):
 
 class EngagementResponse(BaseModel):
     id: UUID
+    organization_id: UUID | None = None
     name: str
     mode: str
     status: str
@@ -34,8 +36,7 @@ class EngagementResponse(BaseModel):
     approved_by: UUID | None = None
     approved_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScopeEntryCreate(BaseModel):
@@ -58,5 +59,4 @@ class TargetResponse(BaseModel):
     value: str
     type: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

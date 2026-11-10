@@ -57,3 +57,4 @@ async def user_in_organization(db: AsyncSession, user_id: uuid.UUID, organizatio
         )
     )
     return row is not None
+

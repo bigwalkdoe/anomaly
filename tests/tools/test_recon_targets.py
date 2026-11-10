@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from anomaly_tools.recon import parse_recon_output
 
 SAMPLE = "\n".join(

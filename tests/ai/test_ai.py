@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
+import json
 
+import pytest
 from anomaly_ai import AIService, get_provider
 from anomaly_ai.providers import AIMessage, AnthropicProvider, OllamaProvider, OpenAIProvider
 
@@ -79,11 +80,16 @@ async def test_ollama_provider_complete(monkeypatch):
 async def test_openai_provider_complete(monkeypatch):
     dummy = DummyClient()
     dummy.response = DummyResponse(
-        {"choices": [{"message": {"content": "openai hi"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 2}}
+        {
+            "choices": [{"message": {"content": "openai hi"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+        }
     )
     monkeypatch.setattr("anomaly_ai.providers.httpx.AsyncClient", lambda *a, **k: dummy)
 
-    p = OpenAIProvider(api_key="sk-test", model="gpt-4o-mini", base_url="https://api.openai.com/v1")
+    p = OpenAIProvider(
+        api_key="sk-test", model="gpt-4o-mini", base_url="https://api.openai.com/v1"
+    )
     resp = await p.complete([AIMessage(role="user", content="hi")])
 
     assert resp.content == "openai hi"
@@ -96,11 +102,18 @@ async def test_openai_provider_complete(monkeypatch):
 async def test_anthropic_provider_complete(monkeypatch):
     dummy = DummyClient()
     dummy.response = DummyResponse(
-        {"content": [{"type": "text", "text": "anthropic hi"}], "usage": {"input_tokens": 1, "output_tokens": 2}}
+        {
+            "content": [{"type": "text", "text": "anthropic hi"}],
+            "usage": {"input_tokens": 1, "output_tokens": 2},
+        }
     )
     monkeypatch.setattr("anomaly_ai.providers.httpx.AsyncClient", lambda *a, **k: dummy)
 
-    p = AnthropicProvider(api_key="ak-test", model="claude-3-5-sonnet", base_url="https://api.anthropic.com/v1")
+    p = AnthropicProvider(
+        api_key="ak-test",
+        model="claude-3-5-sonnet",
+        base_url="https://api.anthropic.com/v1",
+    )
     resp = await p.complete([AIMessage(role="user", content="hi")])
 
     assert resp.content == "anthropic hi"
@@ -113,28 +126,22 @@ async def test_anthropic_provider_complete(monkeypatch):
 @pytest.mark.asyncio
 async def test_ai_service_complete_still_works_with_mock_provider():
     # Preserve basic service behavior; provider is injected
-    dummy = DummyClient()
-    dummy.response = DummyResponse({"message": {"content": "svc"}, "prompt_eval_count": 1, "eval_count": 1})
-
-    class P(OllamaProvider):
-        async def complete(self, messages, **kwargs):
-            return await super().complete(messages, **kwargs)
-
-    import anomaly_ai.providers as providers
-    # monkeypatch not available here; use simple fake provider
     class Fake:
         name = "fake"
         model = "m"
+
         async def complete(self, messages, **kwargs):
             from anomaly_ai.providers import AIResponse
-            return AIResponse(content="ok", model="m", usage={"prompt_tokens": 1, "completion_tokens": 1})
+
+            return AIResponse(
+                content="ok",
+                model="m",
+                usage={"prompt_tokens": 1, "completion_tokens": 1},
+            )
 
     svc = AIService(provider=Fake())
     resp = await svc.complete([AIMessage(role="user", content="test")])
     assert resp.content == "ok"
-
-import json
-from types import SimpleNamespace
 
 
 class CapturingProvider:
@@ -148,14 +155,25 @@ class CapturingProvider:
     async def complete(self, messages, **kwargs):
         self.calls.append(messages)
         from anomaly_ai.providers import AIResponse
-        return AIResponse(content=self.content, model=self.model, usage={"prompt_tokens": 1, "completion_tokens": 2})
+
+        return AIResponse(
+            content=self.content,
+            model=self.model,
+            usage={"prompt_tokens": 1, "completion_tokens": 2},
+        )
 
 
 @pytest.mark.asyncio
 async def test_suggest_tools_parses_structured_json():
     payload = {
         "suggestions": [
-            {"tool": "nmap", "reason": "port scan", "targets_hint": "10.0.0.1", "params": {"top_ports": 100}, "priority": "high"}
+            {
+                "tool": "nmap",
+                "reason": "port scan",
+                "targets_hint": "10.0.0.1",
+                "params": {"top_ports": 100},
+                "priority": "high",
+            }
         ],
         "notes": "start here",
     }
@@ -192,11 +210,20 @@ async def test_suggest_tools_logs_audit(monkeypatch):
     provider = CapturingProvider(json.dumps(payload))
     logs = []
 
-    async def fake_log(*, actor_id, action, resource_type, resource_id, engagement_id, metadata, db):
-        logs.append({
-            "actor_id": actor_id, "action": action, "resource_type": resource_type,
-            "resource_id": resource_id, "engagement_id": engagement_id, "metadata": metadata, "db": db,
-        })
+    async def fake_log(
+        *, actor_id, action, resource_type, resource_id, engagement_id, metadata, db
+    ):
+        logs.append(
+            {
+                "actor_id": actor_id,
+                "action": action,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "engagement_id": engagement_id,
+                "metadata": metadata,
+                "db": db,
+            }
+        )
 
     monkeypatch.setattr("anomaly_ai.service.AuditService.log", fake_log)
     svc = AIService(provider=provider, db=object())

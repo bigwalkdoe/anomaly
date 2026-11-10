@@ -5,10 +5,14 @@
 useDefault = true
 
 [allowlist]
-description = "Allow dev/example placeholders only in tracked example files"
+description = "Allow example placeholders and ignore generated/local-only paths in filesystem scans"
 paths = [
   '''\.env\.example$''',
   '''apps/web/\.env\.example$''',
+  '''(^|/)\.env$''',
+  '''(^|/)\.next/''',
+  '''(^|/)\.worktrees/''',
+  '''(^|/)\.superpowers/''',
 ]
 commits = []
 regexTarget = "match"

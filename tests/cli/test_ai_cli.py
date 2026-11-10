@@ -27,15 +27,40 @@ def test_ai_suggest_tools_structured(monkeypatch):
     runner = CliRunner()
 
     def fake_post(url, headers=None, json=None, timeout=None):
-        return Resp(200, {
-            "provider": "fake", "model": "m", "parse_success": True, "notes": "n",
-            "raw": None, "suggestions": [
-                {"tool": "nmap", "reason": "scan", "priority": "high", "targets_hint": "host", "params": {"p": "80"}}
-            ]
-        })
+        return Resp(
+            200,
+            {
+                "provider": "fake",
+                "model": "m",
+                "parse_success": True,
+                "notes": "n",
+                "raw": None,
+                "suggestions": [
+                    {
+                        "tool": "nmap",
+                        "reason": "scan",
+                        "priority": "high",
+                        "targets_hint": "host",
+                        "params": {"p": "80"},
+                    }
+                ],
+            },
+        )
 
     monkeypatch.setattr("anomaly_cli.commands.ai.httpx.post", fake_post)
-    result = runner.invoke(app, ["ai", "suggest-tools", "--objective", "scan host", "--api-url", "http://x", "--token", "t"])
+    result = runner.invoke(
+        app,
+        [
+            "ai",
+            "suggest-tools",
+            "--objective",
+            "scan host",
+            "--api-url",
+            "http://x",
+            "--token",
+            "t",
+        ],
+    )
     assert result.exit_code == 0
     assert "nmap" in result.output
     assert "scan" in result.output

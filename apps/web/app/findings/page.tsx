@@ -30,6 +30,10 @@ interface Finding {
   description: string;
 }
 
+interface Engagement {
+  id: string;
+}
+
 function SeverityBadge({ value }: { value: string }) {
   const variant = severityVariant(value);
   return (
@@ -54,10 +58,26 @@ export default function FindingsPage() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    apiJson<Finding[]>("/api/search?q=")
-      .then((data) => setFindings(data))
-      .catch(() => setFindings([]))
-      .finally(() => setLoading(false));
+    const load = async () => {
+      try {
+        const engagements = await apiJson<Engagement[]>("/api/engagements");
+        const allFindings: Finding[] = [];
+        for (const eng of engagements.slice(0, 20)) {
+          try {
+            const findingsForEng = await apiJson<Finding[]>(`/api/engagements/${eng.id}/findings`);
+            allFindings.push(...findingsForEng.map((f) => ({ ...f, engagement_id: eng.id })));
+          } catch {
+            // skip
+          }
+        }
+        setFindings(allFindings);
+      } catch {
+        setFindings([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
   }, []);
 
   const filteredFindings = findings.filter((f) =>
@@ -82,7 +102,7 @@ export default function FindingsPage() {
               </p>
             </div>
             <Button asChild>
-              <Link href="/engagements/new">
+              <Link href="/engagements">
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 New finding
               </Link>

@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar, TopNav } from "@/components/layout/layout";
 import { RequireAuth } from "@/components/RequireAuth";
 import { apiJson } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, Download, FileText } from "@/components/ui/icons";
@@ -15,11 +14,28 @@ type ReportResponse = {
   engagement_name?: string;
 };
 
+interface Engagement {
+  id: string;
+  name: string;
+}
+
 export default function ReportsPage() {
+  const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [engagementId, setEngagementId] = useState("");
   const [format, setFormat] = useState<"markdown" | "html" | "pdf">("markdown");
   const [loading, setLoading] = useState(false);
+  const [loadingEng, setLoadingEng] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiJson<Engagement[]>("/api/engagements")
+      .then((data) => {
+        setEngagements(data);
+        if (data[0]) setEngagementId(data[0].id);
+      })
+      .catch(() => setEngagements([]))
+      .finally(() => setLoadingEng(false));
+  }, []);
 
   const generateReport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,16 +102,23 @@ export default function ReportsPage() {
                   className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_180px_auto] sm:items-end"
                 >
                   <div className="space-y-2">
-                    <Label htmlFor="engagement-id">Engagement ID</Label>
-                    <Input
+                    <Label htmlFor="engagement-id">Engagement</Label>
+                    <select
                       id="engagement-id"
-                      type="text"
                       required
+                      disabled={loadingEng || engagements.length === 0}
                       value={engagementId}
                       onChange={(e) => setEngagementId(e.target.value)}
-                      placeholder="e.g. 550e8400-e29b-…"
-                      autoComplete="off"
-                    />
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {engagements.length === 0 ? (
+                        <option value="">{loadingEng ? "Loading…" : "No engagements available"}</option>
+                      ) : (
+                        engagements.map((e) => (
+                          <option key={e.id} value={e.id}>{e.name}</option>
+                        ))
+                      )}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="report-format">Format</Label>

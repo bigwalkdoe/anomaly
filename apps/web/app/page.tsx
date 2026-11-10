@@ -27,12 +27,32 @@ import {
   Target,
 } from "@/components/ui/icons";
 
+interface DashboardApiResponse {
+  overview?: { engagements: number; findings: number; runs: number };
+  severity?: { critical: number; high: number };
+  engagements?: number;
+  findings?: number;
+  runs?: number;
+  critical?: number;
+  high?: number;
+}
+
 interface DashboardData {
   engagements: number;
   findings: number;
   runs: number;
   critical: number;
   high: number;
+}
+
+function normalizeDashboard(data: DashboardApiResponse): DashboardData {
+  return {
+    engagements: data.overview?.engagements ?? data.engagements ?? 0,
+    findings: data.overview?.findings ?? data.findings ?? 0,
+    runs: data.overview?.runs ?? data.runs ?? 0,
+    critical: data.severity?.critical ?? data.critical ?? 0,
+    high: data.severity?.high ?? data.high ?? 0,
+  };
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -54,9 +74,9 @@ function DashboardContent() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    apiJson<DashboardData>("/api/dashboard")
+    apiJson<DashboardApiResponse>("/api/dashboard")
       .then((result) => {
-        if (!cancelled) setData(result);
+        if (!cancelled) setData(normalizeDashboard(result));
       })
       .catch((err) => {
         if (!cancelled) {

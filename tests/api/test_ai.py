@@ -35,11 +35,21 @@ async def test_ai_suggest_tools_returns_structured(client, db_session, monkeypat
     await db_session.commit()
     token = create_access_token(admin.id, ["admin"])
 
-    async def fake_suggest(self, objective, context=None, actor_id=None, engagement_id=None, **kwargs):
+    async def fake_suggest(
+        self, objective, context=None, actor_id=None, engagement_id=None, **kwargs
+    ):
         return {
             "provider": "fake",
             "model": "fake-model",
-            "suggestions": [{"tool": "nmap", "reason": "scan ports", "targets_hint": "", "params": {}, "priority": "high"}],
+            "suggestions": [
+                {
+                    "tool": "nmap",
+                    "reason": "scan ports",
+                    "targets_hint": "",
+                    "params": {},
+                    "priority": "high",
+                }
+            ],
             "notes": "ok",
             "raw": None,
             "parse_success": True,
@@ -66,7 +76,9 @@ async def test_ai_suggest_tools_fallback(client, db_session, monkeypatch):
     await db_session.commit()
     token = create_access_token(admin.id, ["admin"])
 
-    async def fake_suggest(self, objective, context=None, actor_id=None, engagement_id=None, **kwargs):
+    async def fake_suggest(
+        self, objective, context=None, actor_id=None, engagement_id=None, **kwargs
+    ):
         return {
             "provider": "fake",
             "model": "fake-model",
@@ -98,8 +110,18 @@ async def test_ai_suggest_tools_engagement_access_enforced(client, db_session, m
         user_role = Role(name=RoleName.pentester, description="pentester")
         db_session.add(user_role)
         await db_session.flush()
-    owner = User(email="owner2@example.com", name="Owner", password_hash=hash_password("pass"), roles=[user_role])
-    other = User(email="other2@example.com", name="Other", password_hash=hash_password("pass"), roles=[user_role])
+    owner = User(
+        email="owner2@example.com",
+        name="Owner",
+        password_hash=hash_password("pass"),
+        roles=[user_role],
+    )
+    other = User(
+        email="other2@example.com",
+        name="Other",
+        password_hash=hash_password("pass"),
+        roles=[user_role],
+    )
     db_session.add_all([owner, other])
     await db_session.flush()
     eng = Engagement(name="E-ai", mode=EngagementMode.own_infra, owner_id=owner.id)

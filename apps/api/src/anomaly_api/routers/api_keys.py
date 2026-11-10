@@ -5,7 +5,7 @@ from uuid import UUID
 from anomaly_core.auth import hash_password
 from anomaly_core.models import APIKey
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession
@@ -25,8 +25,7 @@ class APIKeyResponse(BaseModel):
     is_active: bool
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class APIKeyWithSecret(BaseModel):

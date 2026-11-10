@@ -8,6 +8,7 @@ from anomaly_core.models import (
     EngagementMember,
     EngagementMode,
     EngagementStatus,
+    OrganizationMember,
     RoleName,
     Scope,
     ScopeEntry,
@@ -76,6 +77,7 @@ async def create_engagement(payload: EngagementCreate, user: CurrentUser, db: Db
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=org.id,
         metadata={"name": engagement.name, "organization_id": str(org.id)},
         db=db,
     )
@@ -117,6 +119,7 @@ async def update_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata=update_data,
         db=db,
     )
@@ -139,6 +142,7 @@ async def delete_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={},
         db=db,
     )
@@ -245,6 +249,7 @@ async def add_target(
         resource_type="target",
         resource_id=target.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"value": payload.value, "type": payload.type},
         db=db,
     )

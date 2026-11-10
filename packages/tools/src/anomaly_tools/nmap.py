@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from typing import Any
+
+import defusedxml.ElementTree as ET
 
 from anomaly_tools.base import FindingDraft, ToolResult, ToolSpec
 
@@ -104,7 +105,10 @@ class NmapTool:
 def parse_nmap_xml(
     xml_text: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
 ) -> ToolResult:
-    """Legacy/compat parser returning ToolResult with parsed_findings (dicts) and discovered_targets."""
+    """Legacy/compat parser returning ToolResult.
+
+    Includes parsed_findings (dicts) and discovered_targets.
+    """
     findings: list[dict[str, Any]] = []
     try:
         root = ET.fromstring(xml_text)

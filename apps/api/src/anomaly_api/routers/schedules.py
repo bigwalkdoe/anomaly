@@ -6,7 +6,7 @@ from uuid import UUID
 from anomaly_core.models import CronSchedule, Engagement
 from anomaly_core.rbac import engagement_accessible
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
@@ -32,8 +32,7 @@ class CronScheduleResponse(BaseModel):
     is_active: bool
     next_run_at: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/engagements/{engagement_id}/schedules", response_model=list[CronScheduleResponse])

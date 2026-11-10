@@ -59,7 +59,10 @@ class NucleiTool:
 def parse_nuclei_output(
     output: str, targets: list[str] | None = None, params: dict[str, Any] | None = None
 ) -> ToolResult:
-    """Legacy/compat parser returning ToolResult with parsed_findings (dicts) and discovered_targets."""
+    """Legacy/compat parser returning ToolResult.
+
+    Includes parsed_findings (dicts) and discovered_targets.
+    """
     findings: list[dict[str, Any]] = []
     for line in (output or "").splitlines():
         line = line.strip()

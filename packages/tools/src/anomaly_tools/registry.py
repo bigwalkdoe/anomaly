@@ -32,7 +32,7 @@ def get_default_registry() -> ToolRegistry:
     from anomaly_tools.stub import StubTool
 
     reg = ToolRegistry()
-    for tool in [
+    tools: list[Tool] = [
         StubTool(),
         NmapTool(),
         HttpxTool(),
@@ -40,7 +40,8 @@ def get_default_registry() -> ToolRegistry:
         NucleiTool(),
         FfufTool(),
         SqlmapTool(),
-    ]:
+    ]
+    for tool in tools:
         reg.register(tool)
     return reg
 

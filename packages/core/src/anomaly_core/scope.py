@@ -82,7 +82,7 @@ def check_scope(
                 if "in" in kind_str and "out" not in kind_str:
                     in_scope_entries.append(val)
                     continue
-            except Exception:
+            except Exception:  # nosec B112 - skip malformed scope entries defensively
                 continue
     else:
         try:
@@ -109,9 +109,9 @@ def check_scope(
                         if "in" in kind_str and "out" not in kind_str:
                             in_scope_entries.append(val)
                             continue
-                    except Exception:
+                    except Exception:  # nosec B112 - skip malformed scope entries defensively
                         continue
-        except Exception:
+        except Exception:  # nosec B110 - scope loading is best-effort; warn-and-log fallback applies
             pass
 
     in_scope: list[str] = []

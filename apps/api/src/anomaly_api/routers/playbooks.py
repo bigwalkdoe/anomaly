@@ -10,7 +10,7 @@ from anomaly_core.models import Engagement, Playbook, PlaybookStep, Run, RunStat
 from anomaly_core.rbac import engagement_accessible
 from anomaly_core.runner import FakeRunner
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -36,8 +36,7 @@ class PlaybookStepResponse(BaseModel):
     params: dict
     order: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlaybookCreate(BaseModel):
@@ -58,8 +57,7 @@ class PlaybookResponse(BaseModel):
     description: str | None = None
     steps: list[PlaybookStepResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlaybookExecuteResponse(BaseModel):

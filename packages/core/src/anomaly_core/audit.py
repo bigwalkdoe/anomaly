@@ -17,6 +17,7 @@ class AuditService:
         resource_type: str,
         resource_id: uuid.UUID | None = None,
         engagement_id: uuid.UUID | None = None,
+        organization_id: uuid.UUID | None = None,
         metadata: dict[str, Any] | None = None,
         db: AsyncSession | None = None,
     ) -> AuditLog:
@@ -26,6 +27,7 @@ class AuditService:
             resource_type=resource_type,
             resource_id=resource_id,
             engagement_id=engagement_id,
+            organization_id=organization_id,
             metadata_=metadata or {},
         )
         if db is not None:

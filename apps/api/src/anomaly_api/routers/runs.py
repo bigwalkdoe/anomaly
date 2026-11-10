@@ -9,7 +9,7 @@ from anomaly_core.db import SessionLocal
 from anomaly_core.models import Engagement, RoleName, Run, RunStatus
 from anomaly_core.scope import check_scope
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
@@ -29,8 +29,7 @@ class RunResponse(BaseModel):
     status: str
     scope_warning: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/api/engagements/{engagement_id}/runs", response_model=list[RunResponse])
@@ -105,6 +104,7 @@ async def create_run(
         raise HTTPException(status_code=403, detail="Requested targets are out of scope")
 
     run = Run(
+        organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
         user_id=user.id,
         tool=payload.tool,
@@ -114,12 +114,14 @@ async def create_run(
     )
     db.add(run)
     await db.flush()
+    org_id = getattr(engagement, "organization_id", None)
     await AuditService.log(
         actor_id=user.id,
         action="run.enqueue",
         resource_type="run",
         resource_id=run.id,
         engagement_id=engagement.id,
+        organization_id=org_id,
         metadata={"tool": run.tool, "targets": targets},
         db=db,
     )
@@ -132,7 +134,7 @@ async def create_run(
 
             async with SessionLocal() as db2:
                 await execute_run(db2, run.id)
-        except Exception:
+        except Exception:  # nosec B110 - inline run failures must not break enqueue response
             pass
 
     return RunResponse.model_validate(run)
