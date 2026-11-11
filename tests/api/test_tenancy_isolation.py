@@ -275,3 +275,36 @@ async def test_cross_tenant_user_listing_isolation(client, db_session):
     assert "users-admin-a@example.com" in emails
     assert "users-admin-b@example.com" not in emails
     assert "users-outsider-b@example.com" not in emails
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_v1_report_isolation(client, db_session):
+    """V1 report generation must not leak cross-tenant engagement data."""
+    admin_a = await _seed(db_session, "v1-report-a@example.com", RoleName.admin)
+    admin_b = await _seed(db_session, "v1-report-b@example.com", RoleName.admin)
+
+    org_a = Organization(name="V1 Org A", slug="v1-org-a")
+    org_b = Organization(name="V1 Org B", slug="v1-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"))
+
+    eng_b = Engagement(
+        name="V1 Eng B",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_b.id,
+        organization_id=org_b.id,
+    )
+    db_session.add(eng_b)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng_b.id, user_id=admin_b.id, role=RoleName.admin)
+    )
+    await db_session.commit()
+
+    headers_a = {
+        "Authorization": f"Bearer {create_access_token(admin_a.id, [RoleName.admin.value])}"
+    }
+    r = await client.get(f"/api/v1/engagements/{eng_b.id}/reports/generate", headers=headers_a)
+    assert r.status_code in (403, 404)

@@ -101,6 +101,7 @@ async def v1_create_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=org.id,
         metadata={"name": engagement.name, "organization_id": str(org.id)},
         db=db,
     )
@@ -135,6 +136,7 @@ async def v1_approve_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"approver_id": str(user.id), "status": engagement.status.value},
         db=db,
     )
@@ -216,6 +218,7 @@ async def v1_create_run(
         raise HTTPException(status_code=403, detail="Requested targets are out of scope")
 
     run = Run(
+        organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
         user_id=user.id,
         tool=payload.tool,
@@ -231,6 +234,7 @@ async def v1_create_run(
         resource_type="run",
         resource_id=run.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"tool": run.tool, "targets": targets},
         db=db,
     )
@@ -280,9 +284,10 @@ async def v1_generate_report(
     format: str = "markdown",
 ):
     from anomaly_core.models import Evidence, Finding
+    from anomaly_core.rbac import engagement_accessible
 
     engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
+    if engagement is None or not await engagement_accessible(db, user, engagement):
         raise HTTPException(status_code=404, detail="Engagement not found")
     findings = (
         await db.scalars(select(Finding).where(Finding.engagement_id == engagement_id))
