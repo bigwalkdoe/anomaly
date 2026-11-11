@@ -125,10 +125,10 @@ async def run_ws_status(run_id: str, user: CurrentUser, db: DbSession):
     try:
         rid = UUID(str(run_id))
     except ValueError:
-        raise HTTPException(status_code=404, detail="Run not found") from None
+        return {"active": False, "connection_count": 0}
     run = await db.get(Run, rid)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        return {"active": False, "connection_count": 0}
     engagement = await db.get(Engagement, run.engagement_id)
     if engagement is None or not await engagement_accessible(db, user, engagement):
         raise HTTPException(status_code=404, detail="Run not found")
