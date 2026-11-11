@@ -156,3 +156,45 @@ async def test_run_status_unknown_run_is_inactive(client, db_session):
 
     assert resp.status_code == 200
     assert resp.json() == {"active": False, "connection_count": 0}
+
+
+@pytest.mark.asyncio
+async def test_broadcast_does_not_cross_tenant_boundaries(client, db_session):
+    from anomaly_core.models import Membership, Organization
+
+    admin_a = await _make_user(db_session, "ws-broadcast-a@example.com")
+    user_b = await _make_user(db_session, "ws-broadcast-b@example.com")
+
+    org_a = Organization(name="WS Org A", slug="ws-org-a")
+    org_b = Organization(name="WS Org B", slug="ws-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=user_b.id, organization_id=org_b.id, role="member"))
+    await db_session.commit()
+
+    ws_b = FakeWebSocket()
+    task = asyncio.create_task(
+        notification_websocket(ws_b, token=create_access_token(user_b.id, ["admin"]))
+    )
+    try:
+        for _ in range(200):
+            if ws_b.accepted:
+                break
+            await asyncio.sleep(0.01)
+        assert ws_b.accepted, "websocket never accepted the valid access token"
+
+        resp = await client.post(
+            "/api/notifications/broadcast",
+            headers=_auth_headers(admin_a),
+            json={"title": "Tenant A", "message": "secret", "severity": "info"},
+        )
+        assert resp.status_code == 200
+        await asyncio.sleep(0.05)
+        assert not any(
+            msg.get("type") == "notification" and msg.get("title") == "Tenant A"
+            for msg in ws_b.sent
+        )
+    finally:
+        ws_b.stop.set()
+        await asyncio.wait_for(task, timeout=5)
