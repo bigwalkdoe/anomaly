@@ -175,6 +175,7 @@ async def v1_create_run(
                 resource_type="engagement",
                 resource_id=engagement.id,
                 engagement_id=engagement.id,
+                organization_id=getattr(engagement, "organization_id", None),
                 metadata={
                     "reason": "engagement_not_approved",
                     "status": status_val,
@@ -207,6 +208,7 @@ async def v1_create_run(
             resource_type="engagement",
             resource_id=engagement.id,
             engagement_id=engagement.id,
+            organization_id=getattr(engagement, "organization_id", None),
             metadata={
                 "reason": "out_of_scope",
                 "targets": targets,

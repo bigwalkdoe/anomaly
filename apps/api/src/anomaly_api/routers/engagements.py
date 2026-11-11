@@ -194,6 +194,7 @@ async def submit_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"status": engagement.status.value},
         db=db,
     )
@@ -225,6 +226,7 @@ async def approve_engagement(
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"approver_id": str(user.id), "status": engagement.status.value},
         db=db,
     )
