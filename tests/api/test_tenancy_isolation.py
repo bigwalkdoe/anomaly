@@ -248,3 +248,30 @@ async def test_cross_tenant_audit_isolation(client, db_session):
     assert "org-b-only" not in actions
     engagement_ids = [log.get("engagement_id") for log in r.json()]
     assert str(eng_b.id) not in engagement_ids
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_user_listing_isolation(client, db_session):
+    """Admin user listing must not expose users from other organizations."""
+    admin_a = await _seed(db_session, "users-admin-a@example.com", RoleName.admin)
+    admin_b = await _seed(db_session, "users-admin-b@example.com", RoleName.admin)
+    outsider_b = await _seed(db_session, "users-outsider-b@example.com", RoleName.pentester)
+
+    org_a = Organization(name="Users Org A", slug="users-org-a")
+    org_b = Organization(name="Users Org B", slug="users-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"))
+    db_session.add(Membership(user_id=outsider_b.id, organization_id=org_b.id, role="member"))
+    await db_session.commit()
+
+    headers_a = {
+        "Authorization": f"Bearer {create_access_token(admin_a.id, [RoleName.admin.value])}"
+    }
+    r = await client.get("/api/users", headers=headers_a)
+    assert r.status_code == 200
+    emails = {u["email"] for u in r.json()}
+    assert "users-admin-a@example.com" in emails
+    assert "users-admin-b@example.com" not in emails
+    assert "users-outsider-b@example.com" not in emails
