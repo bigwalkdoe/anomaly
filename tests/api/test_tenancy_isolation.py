@@ -193,3 +193,58 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     assert overview["runs"] == 0
     assert data["severity"]["critical"] == 0
     assert data["severity"]["high"] == 0
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_audit_isolation(client, db_session):
+    """Audit logs must not leak across tenant boundaries."""
+    from anomaly_core.audit import AuditService
+
+    admin_a = await _seed(db_session, "audit-admin-a@example.com", RoleName.admin)
+    admin_b = await _seed(db_session, "audit-admin-b@example.com", RoleName.admin)
+
+    org_a = Organization(name="Audit Org A", slug="audit-org-a")
+    org_b = Organization(name="Audit Org B", slug="audit-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"))
+
+    eng_b = Engagement(
+        name="Audit Eng B",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_b.id,
+        organization_id=org_b.id,
+    )
+    db_session.add(eng_b)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng_b.id, user_id=admin_b.id, role=RoleName.admin)
+    )
+    await db_session.flush()
+
+    await AuditService.log(
+        actor_id=admin_b.id,
+        action="engagement.create",
+        resource_type="engagement",
+        resource_id=eng_b.id,
+        engagement_id=eng_b.id,
+        organization_id=org_b.id,
+        metadata={"secret": "org-b-only"},
+        db=db_session,
+    )
+    await db_session.commit()
+
+    headers_a = {
+        "Authorization": f"Bearer {create_access_token(admin_a.id, [RoleName.admin.value])}"
+    }
+
+    r = await client.get(f"/api/audit?engagement_id={eng_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+
+    r = await client.get("/api/audit", headers=headers_a)
+    assert r.status_code == 200
+    actions = [log.get("metadata", {}).get("secret") for log in r.json()]
+    assert "org-b-only" not in actions
+    engagement_ids = [log.get("engagement_id") for log in r.json()]
+    assert str(eng_b.id) not in engagement_ids
