@@ -1,6 +1,9 @@
 # worktrees
 .worktrees/
 
+# local tool artifacts
+.playwright-mcp/
+
 # Python
 __pycache__/
 *.py[cod]
