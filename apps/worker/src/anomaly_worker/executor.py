@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from anomaly_core.audit import AuditService
+from anomaly_core.execution import validate_execution_manifest
 from anomaly_core.models import (
     Engagement,
     Evidence,
@@ -16,8 +17,8 @@ from anomaly_core.models import (
     Scope,
     Target,
 )
+from anomaly_core.policy import evaluate_assessment_request
 from anomaly_core.runner import FakeRunner, RunSpec
-from anomaly_core.scope import check_scope
 from anomaly_tools import ToolSpec as AnomalyToolSpec
 from anomaly_tools import get_default_registry
 from anomaly_tools.stub import stub_tool
@@ -69,8 +70,97 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         engagement = await db.get(Engagement, run.engagement_id)
 
     targets = _targets_from_run(run)
-    result = check_scope(engagement, targets)
-    if result.has_warning:
+    if engagement is None:
+        run.status = RunStatus.failed
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="policy.denied",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(run, "organization_id", None),
+            metadata={"reason": "engagement_not_found", "op": "assessment.execute"},
+            db=db,
+        )
+        await db.commit()
+        await db.refresh(run)
+        return run
+
+    decision = evaluate_assessment_request(engagement, targets, scope_engagement=engagement)
+    if not decision.allowed:
+        run.status = RunStatus.failed
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="policy.denied",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
+            metadata={**(decision.metadata or {}), "op": "assessment.execute"},
+            db=db,
+        )
+        await db.commit()
+        await db.refresh(run)
+        return run
+
+    run_params = run.params if isinstance(run.params, dict) else {}
+    manifest = run_params.get("execution_manifest")
+    if manifest is not None:
+        ok, reason = validate_execution_manifest(manifest)
+        if not ok:
+            run.status = RunStatus.failed
+            await AuditService.log(
+                actor_id=run.user_id,
+                action="policy.denied",
+                resource_type="run",
+                resource_id=run.id,
+                engagement_id=run.engagement_id,
+                organization_id=getattr(engagement, "organization_id", None),
+                metadata={"reason": f"invalid_manifest:{reason}", "op": "assessment.execute"},
+                db=db,
+            )
+            await db.commit()
+            await db.refresh(run)
+            return run
+        m_eng = str(manifest.get("engagement_id") or "")
+        m_run = str(manifest.get("run_id") or "")
+        m_org = manifest.get("organization_id")
+        eng_org = getattr(engagement, "organization_id", None)
+        if m_eng != str(run.engagement_id) or m_run != str(run.id):
+            run.status = RunStatus.failed
+            await AuditService.log(
+                actor_id=run.user_id,
+                action="policy.denied",
+                resource_type="run",
+                resource_id=run.id,
+                engagement_id=run.engagement_id,
+                organization_id=getattr(engagement, "organization_id", None),
+                metadata={"reason": "manifest_mismatch", "op": "assessment.execute"},
+                db=db,
+            )
+            await db.commit()
+            await db.refresh(run)
+            return run
+        if (eng_org is None and m_org is not None) or (
+            eng_org is not None and str(eng_org) != str(m_org)
+        ):
+            run.status = RunStatus.failed
+            await AuditService.log(
+                actor_id=run.user_id,
+                action="policy.denied",
+                resource_type="run",
+                resource_id=run.id,
+                engagement_id=run.engagement_id,
+                organization_id=getattr(engagement, "organization_id", None),
+                metadata={"reason": "manifest_org_mismatch", "op": "assessment.execute"},
+                db=db,
+            )
+            await db.commit()
+            await db.refresh(run)
+            return run
+
+    result = decision.scope_result
+    if result and result.has_warning:
         run.scope_warning = True
         await AuditService.log(
             actor_id=run.user_id,
@@ -78,6 +168,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             resource_type="run",
             resource_id=run.id,
             engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
             metadata={"out_of_scope": result.out_of_scope},
             db=db,
         )
@@ -91,6 +182,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             resource_type="run",
             resource_id=run.id,
             engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
             metadata={"tool": run.tool, "params": tool_params},
             db=db,
         )
@@ -208,7 +300,13 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
                 )
             )
 
+    engagement_targets = (
+        await db.scalars(select(Target).where(Target.engagement_id == run.engagement_id))
+    ).all()
+    target_by_value = {str(t.value): t.id for t in engagement_targets}
+
     for f in finding_drafts:
+        target_id = None
         if isinstance(f, dict):
             title = f.get("title", "Stub finding: target reachable")
             severity = _severity(f.get("severity", "info"))
@@ -216,6 +314,9 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             remediation = f.get("remediation")
             cvss = f.get("cvss")
             fp = f.get("fingerprint") or f"{run.id}:{title}:{description[:64]}"
+            tval = f.get("target") or f.get("host") or f.get("url")
+            if tval is not None and str(tval) in target_by_value:
+                target_id = target_by_value[str(tval)]
         else:
             title = getattr(f, "title", "Finding")
             severity = _severity(getattr(f, "severity", "info"))
@@ -228,6 +329,10 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
                 or meta.get("fingerprint")
                 or f"{run.id}:{title}:{description[:64]}"
             )
+            tval = meta.get("target") or meta.get("host") or meta.get("url")
+            if tval is not None and str(tval) in target_by_value:
+                target_id = target_by_value[str(tval)]
+
         # Dedup/attach by (engagement_id, fingerprint)
         existing = await db.scalar(
             select(Finding).where(
@@ -238,7 +343,9 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         if existing is not None:
             continue
         finding = Finding(
+            organization_id=getattr(engagement, "organization_id", None),
             engagement_id=run.engagement_id,
+            target_id=target_id,
             title=title,
             severity=severity,
             description=description,
@@ -257,6 +364,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         resource_type="run",
         resource_id=run.id,
         engagement_id=run.engagement_id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"status": run.status.value, "tool": run.tool},
         db=db,
     )

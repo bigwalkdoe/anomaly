@@ -10,9 +10,30 @@ from rich.table import Table
 app = typer.Typer(name="ai", help="AI-assisted suggestions")
 console = Console()
 
+DEFAULT_TIMEOUT = 60.0
+
 
 def _headers(token: str | None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _call(method: str, url: str, **kwargs):
+    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+    fn = {
+        "GET": httpx.get,
+        "POST": httpx.post,
+        "PUT": httpx.put,
+        "PATCH": httpx.patch,
+        "DELETE": httpx.delete,
+    }[method.upper()]
+    try:
+        return fn(url, **kwargs)
+    except httpx.RequestError as exc:
+        console.print(f"[red]Request failed: {exc}[/red]")
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        console.print(f"[red]Unexpected error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
 
 @app.command("suggest-tools")
@@ -36,16 +57,20 @@ def suggest_tools(
     if engagement_id:
         payload["engagement_id"] = engagement_id
 
-    r = httpx.post(
+    r = _call(
+        "POST",
         f"{api_url}/api/ai/suggest-tools",
         headers=_headers(token or None),
         json=payload,
-        timeout=60,
     )
     if r.status_code != 200:
         console.print(f"[red]Failed: {r.status_code} {r.text}[/red]")
         raise typer.Exit(1)
-    data = r.json()
+    try:
+        data = r.json()
+    except Exception as exc:
+        console.print(f"[red]Invalid response: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
     parse_success = data.get("parse_success", False)
     suggestions = data.get("suggestions") or []

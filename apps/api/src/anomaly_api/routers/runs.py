@@ -6,8 +6,9 @@ from uuid import UUID
 
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
+from anomaly_core.execution import build_execution_manifest
 from anomaly_core.models import Engagement, RoleName, Run, RunStatus
-from anomaly_core.scope import check_scope
+from anomaly_core.policy import evaluate_assessment_request
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -56,31 +57,6 @@ async def create_run(
     user: CurrentUser,
     db: DbSession,
 ):
-    # Policy gate: engagement must be approved/active for assessment execution
-    if getattr(engagement, "status", None) is not None:
-        status_val = (
-            engagement.status.value
-            if hasattr(engagement.status, "value")
-            else str(engagement.status)
-        )
-        if status_val not in ("approved", "active"):
-            await AuditService.log(
-                actor_id=user.id,
-                action="policy.denied",
-                resource_type="engagement",
-                resource_id=engagement.id,
-                engagement_id=engagement.id,
-                organization_id=getattr(engagement, "organization_id", None),
-                metadata={
-                    "reason": "engagement_not_approved",
-                    "status": status_val,
-                    "op": "assessment.request",
-                },
-                db=db,
-            )
-            await db.commit()
-            raise HTTPException(status_code=403, detail="Engagement not approved for assessment")
-
     targets = payload.targets
     try:
         from anomaly_core.models import Scope
@@ -94,12 +70,9 @@ async def create_run(
         eng_loaded = res.scalar_one()
     except Exception:
         eng_loaded = engagement
-    result = check_scope(eng_loaded, targets)
-    run_params = dict(payload.params or {})
-    run_params["targets"] = targets  # scope-checked targets must not be overridden
 
-    # Enforce scope policy: out-of-scope targets are denied (no bypass)
-    if result.has_warning and result.out_of_scope:
+    decision = evaluate_assessment_request(engagement, targets, scope_engagement=eng_loaded)
+    if not decision.allowed:
         await AuditService.log(
             actor_id=user.id,
             action="policy.denied",
@@ -107,16 +80,19 @@ async def create_run(
             resource_id=engagement.id,
             engagement_id=engagement.id,
             organization_id=getattr(engagement, "organization_id", None),
-            metadata={
-                "reason": "out_of_scope",
-                "targets": targets,
-                "out_of_scope": result.out_of_scope,
-            },
+            metadata=decision.metadata,
             db=db,
         )
         await db.commit()
-        raise HTTPException(status_code=403, detail="Requested targets are out of scope")
+        detail = (
+            "Engagement not approved for assessment"
+            if decision.reason == "engagement_not_approved"
+            else "Requested targets are out of scope"
+        )
+        raise HTTPException(status_code=403, detail=detail)
 
+    run_params = dict(payload.params or {})
+    run_params["targets"] = targets  # scope-checked targets must not be overridden
     run = Run(
         organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
@@ -128,6 +104,15 @@ async def create_run(
     )
     db.add(run)
     await db.flush()
+    manifest = build_execution_manifest(
+        run_id=run.id,
+        engagement=engagement,
+        tool=payload.tool,
+        targets=targets,
+        params={k: v for k, v in run_params.items() if k != "targets"},
+        policy_decision={"allowed": True, "reason": None},
+    )
+    run.params = {**run_params, "execution_manifest": manifest.to_dict()}
     org_id = getattr(engagement, "organization_id", None)
     await AuditService.log(
         actor_id=user.id,
@@ -136,7 +121,7 @@ async def create_run(
         resource_id=run.id,
         engagement_id=engagement.id,
         organization_id=org_id,
-        metadata={"tool": run.tool, "targets": targets},
+        metadata={"tool": run.tool, "targets": targets, "manifest_ref": str(run.id)},
         db=db,
     )
     await db.commit()

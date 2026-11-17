@@ -8,9 +8,30 @@ from rich.table import Table
 app = typer.Typer(name="reports", help="Report generation")
 console = Console()
 
+DEFAULT_TIMEOUT = 30.0
+
 
 def _headers(token: str | None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _call(method: str, url: str, **kwargs):
+    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+    fn = {
+        "GET": httpx.get,
+        "POST": httpx.post,
+        "PUT": httpx.put,
+        "PATCH": httpx.patch,
+        "DELETE": httpx.delete,
+    }[method.upper()]
+    try:
+        return fn(url, **kwargs)
+    except httpx.RequestError as exc:
+        console.print(f"[red]Request failed: {exc}[/red]")
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        console.print(f"[red]Unexpected error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
 
 @app.command("generate")
@@ -21,7 +42,8 @@ def generate(
     token: str = typer.Option("", "--token"),
 ):
     """Generate a report for an engagement."""
-    r = httpx.get(
+    r = _call(
+        "GET",
         f"{api_url}/api/reports/engagements/{engagement_id}/generate",
         headers=_headers(token or None),
         params={"format": format},
@@ -32,11 +54,17 @@ def generate(
     if r.status_code != 200:
         console.print(f"[red]Failed: {r.status_code} {r.text}[/red]")
         raise typer.Exit(1)
-    data = r.json()
+    try:
+        data = r.json()
+    except Exception as exc:
+        console.print(f"[red]Invalid response: {exc}[/red]")
+        raise typer.Exit(1) from exc
     console.print(
-        f"[green]Report generated[/green] format={data['format']} findings={data['finding_count']}"
+        f"[green]Report generated[/green] format={data.get('format', format)} "
+        f"findings={data.get('finding_count', '-')}"
     )
-    console.print(data["content"])
+    if data.get("content") is not None:
+        console.print(data.get("content"))
 
 
 @app.command("list")
@@ -45,20 +73,28 @@ def list_reports(
     api_url: str = typer.Option("http://localhost:8000", "--api-url"),
     token: str = typer.Option("", "--token"),
 ):
-    """List reports for an engagement (metadata via dashboard/stats is available)."""
-    r = httpx.get(
+    """Show engagement summary (report metadata endpoint is not yet available)."""
+    r = _call(
+        "GET",
         f"{api_url}/api/engagements/{engagement_id}",
         headers=_headers(token or None),
     )
-    if r.status_code != 200:
-        console.print(f"[red]Failed: {r.status_code}[/red]")
+    if r.status_code == 404:
+        console.print("[red]Engagement not found[/red]")
         raise typer.Exit(1)
-    data = r.json()
+    if r.status_code != 200:
+        console.print(f"[red]Failed: {r.status_code} {r.text}[/red]")
+        raise typer.Exit(1)
+    try:
+        data = r.json()
+    except Exception as exc:
+        console.print(f"[red]Invalid response: {exc}[/red]")
+        raise typer.Exit(1) from exc
     table = Table(title=f"Engagement {engagement_id}")
     table.add_column("Field")
     table.add_column("Value")
-    table.add_row("Name", data["name"])
-    table.add_row("Mode", data["mode"])
-    table.add_row("Status", data["status"])
-    table.add_row("Client", data.get("client_name") or "-")
+    table.add_row("Name", str(data.get("name", "-")))
+    table.add_row("Mode", str(data.get("mode", "-")))
+    table.add_row("Status", str(data.get("status", "-")))
+    table.add_row("Client", str(data.get("client_name") or "-"))
     console.print(table)

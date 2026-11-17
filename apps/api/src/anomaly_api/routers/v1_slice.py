@@ -1,25 +1,30 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Annotated, Any
 from uuid import UUID
 
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
+from anomaly_core.execution import build_execution_manifest
 from anomaly_core.models import (
     Engagement,
     EngagementMember,
     EngagementStatus,
+    Report,
+    ReportFormat,
+    ReportStatus,
     RoleName,
     Run,
     RunStatus,
     Scope,
 )
-from anomaly_core.scope import check_scope
+from anomaly_core.policy import evaluate_assessment_request
 from anomaly_core.tenancy import get_or_create_default_organization
 from anomaly_reporting import ReportGenerator
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.routers.auth import me as auth_me
@@ -161,31 +166,6 @@ async def v1_create_run(
     user: CurrentUser,
     db: DbSession,
 ):
-    # Policy gate (same as legacy)
-    if getattr(engagement, "status", None) is not None:
-        status_val = (
-            engagement.status.value
-            if hasattr(engagement.status, "value")
-            else str(engagement.status)
-        )
-        if status_val not in ("approved", "active"):
-            await AuditService.log(
-                actor_id=user.id,
-                action="policy.denied",
-                resource_type="engagement",
-                resource_id=engagement.id,
-                engagement_id=engagement.id,
-                organization_id=getattr(engagement, "organization_id", None),
-                metadata={
-                    "reason": "engagement_not_approved",
-                    "status": status_val,
-                    "op": "assessment.request",
-                },
-                db=db,
-            )
-            await db.commit()
-            raise HTTPException(status_code=403, detail="Engagement not approved for assessment")
-
     targets = payload.targets
     try:
         from sqlalchemy.orm import selectinload
@@ -198,10 +178,9 @@ async def v1_create_run(
         eng_loaded = res.scalar_one()
     except Exception:
         eng_loaded = engagement
-    result = check_scope(eng_loaded, targets)
-    run_params = dict(payload.params or {})
-    run_params["targets"] = targets
-    if result.has_warning and result.out_of_scope:
+
+    decision = evaluate_assessment_request(engagement, targets, scope_engagement=eng_loaded)
+    if not decision.allowed:
         await AuditService.log(
             actor_id=user.id,
             action="policy.denied",
@@ -209,16 +188,19 @@ async def v1_create_run(
             resource_id=engagement.id,
             engagement_id=engagement.id,
             organization_id=getattr(engagement, "organization_id", None),
-            metadata={
-                "reason": "out_of_scope",
-                "targets": targets,
-                "out_of_scope": result.out_of_scope,
-            },
+            metadata=decision.metadata,
             db=db,
         )
         await db.commit()
-        raise HTTPException(status_code=403, detail="Requested targets are out of scope")
+        detail = (
+            "Engagement not approved for assessment"
+            if decision.reason == "engagement_not_approved"
+            else "Requested targets are out of scope"
+        )
+        raise HTTPException(status_code=403, detail=detail)
 
+    run_params = dict(payload.params or {})
+    run_params["targets"] = targets
     run = Run(
         organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
@@ -230,6 +212,15 @@ async def v1_create_run(
     )
     db.add(run)
     await db.flush()
+    manifest = build_execution_manifest(
+        run_id=run.id,
+        engagement=engagement,
+        tool=payload.tool,
+        targets=targets,
+        params={k: v for k, v in run_params.items() if k != "targets"},
+        policy_decision={"allowed": True, "reason": None},
+    )
+    run.params = {**run_params, "execution_manifest": manifest.to_dict()}
     await AuditService.log(
         actor_id=user.id,
         action="run.enqueue",
@@ -237,7 +228,7 @@ async def v1_create_run(
         resource_id=run.id,
         engagement_id=engagement.id,
         organization_id=getattr(engagement, "organization_id", None),
-        metadata={"tool": run.tool, "targets": targets},
+        metadata={"tool": run.tool, "targets": targets, "manifest_ref": str(run.id)},
         db=db,
     )
     await db.commit()
@@ -252,7 +243,7 @@ async def v1_create_run(
             async with SessionLocal() as db2:
                 await execute_run(db2, run.id)
             await db.refresh(run)
-        except Exception:
+        except Exception:  # nosec B110 - inline run failures must not break enqueue response
             pass
 
     return _envelope(
@@ -274,6 +265,89 @@ async def v1_get_run(request: Request, run_id: UUID, user: CurrentUser, db: DbSe
         raise HTTPException(status_code=404, detail="Run not found")
     return _envelope(
         request, {"id": str(run.id), "status": run.status.value, "scope_warning": run.scope_warning}
+    )
+
+
+@router.get("/engagements/{engagement_id}/reports")
+async def v1_list_reports(
+    request: Request,
+    engagement_id: UUID,
+    user: CurrentUser,
+    db: DbSession,
+):
+    from anomaly_core.models import Report
+    from anomaly_core.rbac import engagement_accessible
+
+    engagement = await db.get(Engagement, engagement_id)
+    if engagement is None or not await engagement_accessible(db, user, engagement):
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    rows = (
+        await db.scalars(
+            select(Report)
+            .where(Report.engagement_id == engagement_id)
+            .order_by(Report.version.desc(), Report.created_at.desc())
+        )
+    ).all()
+    return _envelope(
+        request,
+        [
+            {
+                "id": str(r.id),
+                "engagement_id": str(r.engagement_id),
+                "version": r.version,
+                "status": r.status.value,
+                "format": r.format.value,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "sha256": (
+                    hashlib.sha256(r.content.encode("utf-8")).hexdigest() if r.content else None
+                ),
+            }
+            for r in rows
+        ],
+    )
+
+
+@router.get("/reports/{report_id}")
+async def v1_get_report(request: Request, report_id: UUID, user: CurrentUser, db: DbSession):
+    from anomaly_core.models import Engagement, Report
+    from anomaly_core.rbac import engagement_accessible
+
+    report = await db.get(Report, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    engagement = await db.get(Engagement, report.engagement_id)
+    if engagement is None or not await engagement_accessible(db, user, engagement):
+        raise HTTPException(status_code=404, detail="Report not found")
+    await AuditService.log(
+        actor_id=user.id,
+        action="report.access",
+        resource_type="report",
+        resource_id=report.id,
+        engagement_id=report.engagement_id,
+        organization_id=getattr(report, "organization_id", None),
+        metadata={"format": report.format.value, "version": report.version},
+        db=db,
+    )
+    await db.commit()
+    content_sha = (
+        hashlib.sha256(report.content.encode("utf-8")).hexdigest() if report.content else None
+    )
+    return _envelope(
+        request,
+        {
+            "id": str(report.id),
+            "engagement_id": str(report.engagement_id),
+            "version": report.version,
+            "status": report.status.value,
+            "format": report.format.value,
+            "content": report.content,
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+            "traceability": {
+                "organization_id": str(getattr(report, "organization_id", "") or ""),
+                "engagement_id": str(report.engagement_id),
+                "report_sha256": content_sha,
+            },
+        },
     )
 
 
@@ -336,11 +410,50 @@ async def v1_generate_report(
         content = gen.generate_pdf(engagement.name, findings_data, context=context)
     else:
         content = gen.generate_markdown(engagement.name, findings_data, context=context)
+
+    content_str = content.decode("utf-8") if isinstance(content, bytes) else content
+    report_sha = hashlib.sha256(content_str.encode("utf-8")).hexdigest()
+    context = {**context, "report_sha256": report_sha}
+
+    fmt = (
+        ReportFormat(format)
+        if format in ReportFormat._value2member_map_
+        else ReportFormat.markdown
+    )
+    max_version = await db.scalar(
+        select(func.max(Report.version)).where(Report.engagement_id == engagement_id)
+    )
+    next_version = int(max_version or 0) + 1
+    report = Report(
+        organization_id=getattr(engagement, "organization_id", None),
+        engagement_id=engagement_id,
+        version=next_version,
+        status=ReportStatus.draft,
+        format=fmt,
+        content=content_str,
+        author_id=user.id,
+    )
+    db.add(report)
+    await db.flush()
+    await AuditService.log(
+        actor_id=user.id,
+        action="report.generate",
+        resource_type="report",
+        resource_id=report.id,
+        engagement_id=engagement_id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={"format": format, "report_sha256": report_sha, "version": next_version},
+        db=db,
+    )
+    await db.commit()
+    await db.refresh(report)
+
     data = {
+        "report_id": str(report.id),
         "engagement_id": str(engagement_id),
         "engagement_name": engagement.name,
         "format": format,
-        "content": content.decode("utf-8") if isinstance(content, bytes) else content,
+        "content": content_str,
         "finding_count": len(findings_data),
         "traceability": context,
     }

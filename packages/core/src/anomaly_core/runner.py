@@ -58,14 +58,22 @@ class DockerRunner:
         return RunResult(exit_code=0, stdout="", stderr="", artifacts=[])
 
     def _build_args(self, spec: RunSpec) -> dict[str, Any]:
+        limits = spec.resource_limits or {}
         args: dict[str, Any] = {
             "image": spec.image,
+            "command": spec.command,
             "network": spec.network or self.network,
             "environment": spec.env,
-            "mem_limit": spec.resource_limits.get("mem_limit"),
-            "cpu_period": spec.resource_limits.get("cpu_period"),
-            "cpu_quota": spec.resource_limits.get("cpu_quota"),
+            "mem_limit": limits.get("mem_limit"),
+            "cpu_period": limits.get("cpu_period"),
+            "cpu_quota": limits.get("cpu_quota"),
+            "pids_limit": limits.get("pids_limit", 256),
             "privileged": False,
             "read_only": True,
+            "cap_drop": ["ALL"],
+            "security_opt": ["no-new-privileges:true"],
+            "tmpfs": {"/tmp": "rw,noexec,nosuid,size=64m"},  # nosec B108 - scoped tmpfs
         }
+        if limits.get("nano_cpus") is not None:
+            args["nano_cpus"] = limits.get("nano_cpus")
         return args

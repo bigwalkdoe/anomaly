@@ -6,8 +6,9 @@ from uuid import UUID
 
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
-from anomaly_core.models import Engagement, Playbook, PlaybookStep, Run, RunStatus
-from anomaly_core.rbac import engagement_accessible
+from anomaly_core.execution import build_execution_manifest
+from anomaly_core.models import Engagement, Playbook, PlaybookStep, RoleName, Run, RunStatus, Scope
+from anomaly_core.policy import evaluate_assessment_request
 from anomaly_core.runner import FakeRunner
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -87,18 +88,15 @@ async def list_playbooks(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_playbook(
-    engagement_id: UUID,
     payload: PlaybookCreate,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     user: CurrentUser,
     db: DbSession,
 ):
-    engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
-        raise HTTPException(status_code=404, detail="Forbidden")
     playbook = Playbook(
-        engagement_id=engagement_id,
+        engagement_id=engagement.id,
         name=payload.name,
         description=payload.description,
     )
@@ -125,21 +123,15 @@ async def create_playbook(
 
 @router.get("/engagements/{engagement_id}/playbooks/{playbook_id}", response_model=PlaybookResponse)
 async def get_playbook(
-    engagement_id: UUID,
     playbook_id: UUID,
-    user: CurrentUser,
+    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id"))],
     db: DbSession,
 ):
-    engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
-        raise HTTPException(status_code=404, detail="Forbidden")
     result = await db.execute(
         select(Playbook).options(selectinload(Playbook.steps)).where(Playbook.id == playbook_id)
     )
     playbook = result.scalar_one_or_none()
-    if playbook is None:
+    if playbook is None or playbook.engagement_id != engagement.id:
         raise HTTPException(status_code=404, detail="Playbook not found")
     return PlaybookResponse.model_validate(playbook)
 
@@ -148,22 +140,18 @@ async def get_playbook(
     "/engagements/{engagement_id}/playbooks/{playbook_id}", response_model=PlaybookResponse
 )
 async def update_playbook(
-    engagement_id: UUID,
     playbook_id: UUID,
     payload: PlaybookUpdate,
-    user: CurrentUser,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     db: DbSession,
 ):
-    engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
-        raise HTTPException(status_code=404, detail="Forbidden")
     result = await db.execute(
         select(Playbook).options(selectinload(Playbook.steps)).where(Playbook.id == playbook_id)
     )
     playbook = result.scalar_one_or_none()
-    if playbook is None:
+    if playbook is None or playbook.engagement_id != engagement.id:
         raise HTTPException(status_code=404, detail="Playbook not found")
     update_data = payload.model_dump(exclude_unset=True)
     if "name" in update_data:
@@ -179,19 +167,15 @@ async def update_playbook(
     "/engagements/{engagement_id}/playbooks/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_playbook(
-    engagement_id: UUID,
     playbook_id: UUID,
-    user: CurrentUser,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     db: DbSession,
 ):
-    engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
-        raise HTTPException(status_code=404, detail="Forbidden")
     result = await db.execute(select(Playbook).where(Playbook.id == playbook_id))
     playbook = result.scalar_one_or_none()
-    if playbook is None:
+    if playbook is None or playbook.engagement_id != engagement.id:
         raise HTTPException(status_code=404, detail="Playbook not found")
     await db.delete(playbook)
     await db.commit()
@@ -204,43 +188,92 @@ async def delete_playbook(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def execute_playbook(
-    engagement_id: UUID,
     playbook_id: UUID,
     payload: dict,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     user: CurrentUser,
     db: DbSession,
 ):
-    engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
-        raise HTTPException(status_code=404, detail="Forbidden")
     result = await db.execute(
         select(Playbook).options(selectinload(Playbook.steps)).where(Playbook.id == playbook_id)
     )
     playbook = result.scalar_one_or_none()
-    if playbook is None:
+    if playbook is None or playbook.engagement_id != engagement.id:
         raise HTTPException(status_code=404, detail="Playbook not found")
-    targets = payload.get("targets", [])
+
+    targets = payload.get("targets", []) if isinstance(payload, dict) else []
+    if not isinstance(targets, list):
+        targets = []
+    targets = [str(t) for t in targets]
+
+    try:
+        res = await db.execute(
+            select(Engagement)
+            .options(selectinload(Engagement.scope).selectinload(Scope.entries))
+            .where(Engagement.id == engagement.id)
+        )
+        eng_loaded = res.scalar_one()
+    except Exception:
+        eng_loaded = engagement
+
+    decision = evaluate_assessment_request(engagement, targets, scope_engagement=eng_loaded)
+    if not decision.allowed:
+        await AuditService.log(
+            actor_id=user.id,
+            action="policy.denied",
+            resource_type="engagement",
+            resource_id=engagement.id,
+            engagement_id=engagement.id,
+            organization_id=getattr(engagement, "organization_id", None),
+            metadata=decision.metadata,
+            db=db,
+        )
+        await db.commit()
+        detail = (
+            "Engagement not approved for assessment"
+            if decision.reason == "engagement_not_approved"
+            else "Requested targets are out of scope"
+        )
+        raise HTTPException(status_code=403, detail=detail)
+
+    org_id = getattr(engagement, "organization_id", None)
     runs_created = 0
     runner = FakeRunner()
     run_ids = []
     for step in sorted(playbook.steps, key=lambda s: s.order):
+        run_params = {
+            "playbook_id": str(playbook.id),
+            "step_id": str(step.id),
+            "step_name": step.name,
+            "params": step.params,
+            "targets": targets,
+        }
         run = Run(
-            engagement_id=engagement_id,
+            organization_id=org_id,
+            engagement_id=engagement.id,
             user_id=user.id,
             tool=step.tool,
             status=RunStatus.queued,
             scope_warning=False,
-            params={
-                "playbook_id": str(playbook.id),
-                "step_id": str(step.id),
-                "step_name": step.name,
-                "params": step.params,
-            },
+            params=run_params,
         )
         db.add(run)
         await db.flush()
+        manifest = build_execution_manifest(
+            run_id=run.id,
+            engagement=engagement,
+            tool=step.tool,
+            targets=targets,
+            params={
+                "playbook_id": str(playbook.id),
+                "step_id": str(step.id),
+                "params": step.params,
+            },
+            policy_decision={"allowed": True, "reason": None},
+        )
+        run.params = {**run_params, "execution_manifest": manifest.to_dict()}
         run_ids.append(run.id)
         runs_created += 1
         await AuditService.log(
@@ -248,12 +281,14 @@ async def execute_playbook(
             action="playbook.step.run",
             resource_type="run",
             resource_id=run.id,
-            engagement_id=engagement_id,
+            engagement_id=engagement.id,
+            organization_id=org_id,
             metadata={
                 "playbook_id": str(playbook.id),
                 "step_id": str(step.id),
                 "tool": step.tool,
                 "targets": targets,
+                "manifest_ref": str(run.id),
             },
             db=db,
         )

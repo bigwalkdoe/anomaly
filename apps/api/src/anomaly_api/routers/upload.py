@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
 from io import BytesIO
+from pathlib import PurePosixPath
 from typing import Annotated
 
 from anomaly_core.audit import AuditService
 from anomaly_core.models import Engagement, Evidence, EvidenceType
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from minio import Minio
 from pydantic import BaseModel
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
+
+MAX_UPLOAD_SIZE = int(os.environ.get("MAX_UPLOAD_SIZE_BYTES", str(50 * 1024 * 1024)))
 
 
 class UploadResponse(BaseModel):
@@ -53,9 +57,14 @@ async def upload_file(
     if not found:
         client.make_bucket(bucket_name)
 
-    object_name = f"{uuid.uuid4()}/{file.filename}"
+    raw_name = file.filename or "upload"
+    safe_name = PurePosixPath(raw_name).name.replace("\\", "_")
+    safe_name = "".join(ch for ch in safe_name if ch.isalnum() or ch in "._- ") or "upload"
+    object_name = f"{uuid.uuid4()}/{safe_name}"
     content = await file.read()
     file_size = len(content)
+    if file_size > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="File too large")
 
     client.put_object(
         bucket_name,
@@ -65,17 +74,26 @@ async def upload_file(
         content_type=file.content_type or "application/octet-stream",
     )
 
-    # Create evidence record
+    sha256 = hashlib.sha256(content).hexdigest()
+
+    # Create evidence record with integrity/provenance metadata
     ev = Evidence(
         organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
         run_id=None,
         type=EvidenceType.log,
         storage_key=f"{bucket_name}/{object_name}",
+        sha256=sha256,
+        collector="upload",
         metadata={
-            "filename": file.filename,
+            "filename": safe_name,
+            "original_filename": raw_name,
             "size": file_size,
             "content_type": file.content_type,
+            "sha256": sha256,
+            "collector": "upload",
+            "organization_id": str(getattr(engagement, "organization_id", "") or "") or None,
+            "engagement_id": str(engagement.id),
         },
     )
     db.add(ev)
@@ -86,14 +104,14 @@ async def upload_file(
         resource_id=ev.id,
         engagement_id=engagement.id,
         organization_id=getattr(engagement, "organization_id", None),
-        metadata={"filename": file.filename},
+        metadata={"filename": safe_name, "sha256": sha256},
         db=db,
     )
     await db.commit()
 
     endpoint = os.environ.get("MINIO_ENDPOINT", "localhost:9000")
     return UploadResponse(
-        filename=file.filename,
+        filename=safe_name,
         size=file_size,
         content_type=file.content_type or "application/octet-stream",
         bucket=bucket_name,

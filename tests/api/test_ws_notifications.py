@@ -4,9 +4,20 @@ import asyncio
 import uuid
 
 import pytest
-from anomaly_api.routers.ws import manager, notification_websocket
+from anomaly_api.routers.ws import manager, notification_websocket, run_websocket
 from anomaly_core.auth import create_access_token, create_refresh_token, hash_password
-from anomaly_core.models import Engagement, Role, RoleName, Run, User
+from anomaly_core.models import (
+    Engagement,
+    EngagementMember,
+    EngagementMode,
+    Membership,
+    Organization,
+    Role,
+    RoleName,
+    Run,
+    RunStatus,
+    User,
+)
 from sqlalchemy import select
 from starlette.websockets import WebSocketDisconnect
 
@@ -198,3 +209,138 @@ async def test_broadcast_does_not_cross_tenant_boundaries(client, db_session):
     finally:
         ws_b.stop.set()
         await asyncio.wait_for(task, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_run_websocket_requires_token():
+    ws = FakeWebSocket()
+    await run_websocket(ws, run_id=str(uuid.uuid4()), token=None)
+    assert ws.accepted is False
+    assert ws.close_event is not None
+    assert ws.close_event[0] == 4001
+
+
+@pytest.mark.asyncio
+async def test_run_websocket_rejects_invalid_token():
+    ws = FakeWebSocket()
+    await run_websocket(ws, run_id=str(uuid.uuid4()), token="not-a-jwt")
+    assert ws.accepted is False
+    assert ws.close_event is not None
+    assert ws.close_event[0] == 4001
+
+
+@pytest.mark.asyncio
+async def test_run_websocket_rejects_refresh_token(db_session):
+    user = await _make_user(db_session, "ws-run-refresh@example.com")
+    ws = FakeWebSocket()
+    await run_websocket(ws, run_id=str(uuid.uuid4()), token=create_refresh_token(user.id))
+    assert ws.accepted is False
+    assert ws.close_event is not None
+    assert ws.close_event[0] == 4001
+
+
+@pytest.mark.asyncio
+async def test_run_websocket_run_not_found_for_authorized_user(db_session):
+    user = await _make_user(db_session, "ws-run-missing-user@example.com")
+    ws = FakeWebSocket()
+    await run_websocket(
+        ws,
+        run_id=str(uuid.uuid4()),
+        token=create_access_token(user.id, ["admin"]),
+    )
+    assert ws.accepted is False
+    assert ws.close_event is not None
+    assert ws.close_event[0] == 4404
+
+
+@pytest.mark.asyncio
+async def test_run_websocket_forbidden_for_cross_tenant_run(db_session):
+    admin_a = await _make_user(db_session, "ws-run-a@example.com")
+    admin_b = await _make_user(db_session, "ws-run-b@example.com")
+
+    org_a = Organization(name="RunWS Org A", slug="runws-org-a")
+    org_b = Organization(name="RunWS Org B", slug="runws-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"))
+
+    eng_b = Engagement(
+        name="RunWS Eng B",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_b.id,
+        organization_id=org_b.id,
+    )
+    db_session.add(eng_b)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng_b.id, user_id=admin_b.id, role=RoleName.admin)
+    )
+    run_b = Run(
+        engagement_id=eng_b.id,
+        user_id=admin_b.id,
+        tool="nmap",
+        status=RunStatus.queued,
+        organization_id=org_b.id,
+    )
+    db_session.add(run_b)
+    await db_session.commit()
+
+    ws = FakeWebSocket()
+    await run_websocket(
+        ws,
+        run_id=str(run_b.id),
+        token=create_access_token(admin_a.id, ["admin"]),
+    )
+    assert ws.accepted is False
+    assert ws.close_event is not None
+    assert ws.close_event[0] == 4403
+
+
+@pytest.mark.asyncio
+async def test_run_websocket_connects_for_authorized_user(db_session):
+    admin = await _make_user(db_session, "ws-run-ok@example.com")
+    org = Organization(name="RunWS Org", slug="runws-org-ok")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org.id, role="owner"))
+    eng = Engagement(
+        name="RunWS Eng",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org.id,
+    )
+    db_session.add(eng)
+    await db_session.flush()
+    db_session.add(EngagementMember(engagement_id=eng.id, user_id=admin.id, role=RoleName.admin))
+    run = Run(
+        engagement_id=eng.id,
+        user_id=admin.id,
+        tool="nmap",
+        status=RunStatus.queued,
+        organization_id=org.id,
+    )
+    db_session.add(run)
+    await db_session.commit()
+
+    ws = FakeWebSocket()
+    task = asyncio.create_task(
+        run_websocket(
+            ws,
+            run_id=str(run.id),
+            token=create_access_token(admin.id, ["admin"]),
+        )
+    )
+    try:
+        for _ in range(200):
+            if ws.accepted:
+                break
+            await asyncio.sleep(0.01)
+        assert ws.accepted, "run websocket never accepted for authorized user"
+        assert str(run.id) in manager.active_connections
+    finally:
+        ws.stop.set()
+        await asyncio.wait_for(task, timeout=5)
+        assert str(run.id) not in manager.active_connections or not manager.active_connections.get(
+            str(run.id)
+        )

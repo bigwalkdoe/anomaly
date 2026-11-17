@@ -165,6 +165,78 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     r = await client.get(f"/api/ws/runs/{run_b.id}/status", headers=headers_a)
     assert r.status_code in (403, 404)
 
+    # Direct run access across tenants must not leak existence
+    r = await client.get(f"/api/runs/{run_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.get(f"/api/v1/runs/{run_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+
+    # Persisted reports (engagement-scoped) must not leak across tenants
+    from anomaly_core.models import Playbook, Report, ReportFormat, ReportStatus
+
+    report_b = Report(
+        organization_id=org_b.id,
+        engagement_id=eng_b.id,
+        version=1,
+        status=ReportStatus.draft,
+        format=ReportFormat.markdown,
+        content="# Report B\nsecret",
+        author_id=admin_b.id,
+    )
+    db_session.add(report_b)
+    await db_session.flush()
+
+    r = await client.get(f"/api/reports/{report_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.get(f"/api/v1/reports/{report_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+
+    # Playbooks (engagement-scoped) must not leak across tenants
+
+    playbook_b = Playbook(engagement_id=eng_b.id, name="Secret Playbook B")
+    db_session.add(playbook_b)
+    await db_session.commit()
+    await db_session.refresh(playbook_b)
+
+    r = await client.get(f"/api/engagements/{eng_b.id}/playbooks", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.get(
+        f"/api/engagements/{eng_b.id}/playbooks/{playbook_b.id}", headers=headers_a
+    )
+    assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_b.id}/playbooks/{playbook_b.id}/execute",
+        headers=headers_a,
+        json={"targets": ["in.scope.test"]},
+    )
+    assert r.status_code in (403, 404)
+    r = await client.delete(
+        f"/api/engagements/{eng_b.id}/playbooks/{playbook_b.id}", headers=headers_a
+    )
+    assert r.status_code in (403, 404)
+
+    # Schedules (engagement-scoped) must not leak across tenants
+    from anomaly_core.models import CronSchedule
+
+    schedule_b = CronSchedule(
+        engagement_id=eng_b.id,
+        cron_expression="0 * * * *",
+        tool="stub",
+        targets=[],
+        params={},
+        is_active=True,
+    )
+    db_session.add(schedule_b)
+    await db_session.commit()
+    await db_session.refresh(schedule_b)
+
+    r = await client.get(f"/api/engagements/{eng_b.id}/schedules", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.delete(
+        f"/api/engagements/{eng_b.id}/schedules/{schedule_b.id}", headers=headers_a
+    )
+    assert r.status_code in (403, 404)
+
     # Aggregates/search must not include org B data
     r = await client.get("/api/vulnerabilities/summary", headers=headers_a)
     assert r.status_code == 200
@@ -176,6 +248,18 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     payload = r.json()
     finding_titles = [f.get("title") for f in payload.get("findings", [])]
     assert "Secret vuln in B" not in finding_titles
+
+    # Direct finding access across tenants must not leak existence
+    r = await client.get(f"/api/findings/{finding_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.patch(
+        f"/api/findings/{finding_b.id}",
+        headers=headers_a,
+        json={"title": "hijacked"},
+    )
+    assert r.status_code in (403, 404)
+    r = await client.delete(f"/api/findings/{finding_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
 
     r = await client.get("/api/stats", headers=headers_a)
     assert r.status_code == 200
@@ -307,4 +391,74 @@ async def test_cross_tenant_v1_report_isolation(client, db_session):
         "Authorization": f"Bearer {create_access_token(admin_a.id, [RoleName.admin.value])}"
     }
     r = await client.get(f"/api/v1/engagements/{eng_b.id}/reports/generate", headers=headers_a)
+    assert r.status_code in (403, 404)
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_playbook_isolation(client, db_session):
+    """Playbooks must not be accessible or executable across tenant boundaries."""
+    from anomaly_core.models import Playbook, PlaybookStep
+
+    admin_a = await _seed(db_session, "pb-admin-a@example.com", RoleName.admin)
+    admin_b = await _seed(db_session, "pb-admin-b@example.com", RoleName.admin)
+
+    org_a = Organization(name="PB Org A", slug="pb-org-a")
+    org_b = Organization(name="PB Org B", slug="pb-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"))
+
+    eng_a = Engagement(
+        name="PB Eng A",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_a.id,
+        organization_id=org_a.id,
+    )
+    eng_b = Engagement(
+        name="PB Eng B",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_b.id,
+        organization_id=org_b.id,
+    )
+    db_session.add_all([eng_a, eng_b])
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng_a.id, user_id=admin_a.id, role=RoleName.admin)
+    )
+    db_session.add(
+        EngagementMember(engagement_id=eng_b.id, user_id=admin_b.id, role=RoleName.admin)
+    )
+    await db_session.flush()
+
+    pb_b = Playbook(engagement_id=eng_b.id, name="PB-B", description="secret")
+    db_session.add(pb_b)
+    await db_session.flush()
+    db_session.add(PlaybookStep(playbook_id=pb_b.id, name="s1", tool="nmap", params={}, order=1))
+    await db_session.commit()
+
+    headers_a = {
+        "Authorization": f"Bearer {create_access_token(admin_a.id, [RoleName.admin.value])}"
+    }
+
+    # Cannot access playbook via other tenant's engagement path
+    r = await client.get(f"/api/engagements/{eng_b.id}/playbooks/{pb_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_b.id}/playbooks/{pb_b.id}/execute",
+        headers=headers_a,
+        json={"targets": ["example.com"]},
+    )
+    assert r.status_code in (403, 404)
+    r = await client.delete(f"/api/engagements/{eng_b.id}/playbooks/{pb_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+
+    # Cannot confuse binding by using own engagement path with foreign playbook id
+    r = await client.get(f"/api/engagements/{eng_a.id}/playbooks/{pb_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_a.id}/playbooks/{pb_b.id}/execute",
+        headers=headers_a,
+        json={"targets": ["example.com"]},
+    )
     assert r.status_code in (403, 404)

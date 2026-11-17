@@ -8,9 +8,30 @@ from rich.table import Table
 app = typer.Typer(name="engagements", help="Engagement management")
 console = Console()
 
+DEFAULT_TIMEOUT = 30.0
+
 
 def _headers(token: str | None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _call(method: str, url: str, **kwargs):
+    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+    fn = {
+        "GET": httpx.get,
+        "POST": httpx.post,
+        "PUT": httpx.put,
+        "PATCH": httpx.patch,
+        "DELETE": httpx.delete,
+    }[method.upper()]
+    try:
+        return fn(url, **kwargs)
+    except httpx.RequestError as exc:
+        console.print(f"[red]Request failed: {exc}[/red]")
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        console.print(f"[red]Unexpected error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
 
 @app.command("create")
@@ -21,10 +42,11 @@ def create(
     token: str = typer.Option("", "--token"),
 ):
     """Create a new engagement."""
-    r = httpx.post(
+    r = _call(
+        "POST",
         f"{api_url}/api/engagements",
         headers=_headers(token or None),
-        json={"name": name, "mode": mode, "status": "draft"},
+        json={"name": name, "mode": mode},
     )
     if r.status_code not in (200, 201):
         console.print(f"[red]Failed: {r.status_code} {r.text}[/red]")
@@ -33,13 +55,14 @@ def create(
     table = Table(title="Engagement Created")
     table.add_column("Field")
     table.add_column("Value")
-    table.add_row("ID", str(data["id"]))
-    table.add_row("Name", data["name"])
-    table.add_row("Mode", data["mode"])
-    table.add_row("Status", data["status"])
+    table.add_row("ID", str(data.get("id", "-")))
+    table.add_row("Name", str(data.get("name", "-")))
+    table.add_row("Mode", str(data.get("mode", "-")))
+    table.add_row("Status", str(data.get("status", "-")))
     console.print(table)
-    console.print("\n[green]Use this ID for subsequent commands.[/green]")
-    console.print(f"[dim]export ANOMALY_ENGAGEMENT_ID={data['id']}[/dim]")
+    if data.get("id"):
+        console.print("\n[green]Use this ID for subsequent commands.[/green]")
+        console.print(f"[dim]export ANOMALY_ENGAGEMENT_ID={data['id']}[/dim]")
 
 
 @app.command("scope")
@@ -63,7 +86,8 @@ def scope(
             raise typer.Exit(1)
         entries.append({"kind": kind, "target_value": value})
 
-    r = httpx.put(
+    r = _call(
+        "PUT",
         f"{api_url}/api/engagements/{engagement_id}/scope",
         headers=_headers(token or None),
         json={"entries": entries},
@@ -83,7 +107,8 @@ def target(
     token: str = typer.Option("", "--token"),
 ):
     """Add a target to an engagement."""
-    r = httpx.post(
+    r = _call(
+        "POST",
         f"{api_url}/api/engagements/{engagement_id}/targets",
         headers=_headers(token or None),
         json={"value": value, "type": type},
@@ -93,7 +118,8 @@ def target(
         raise typer.Exit(1)
     data = r.json()
     console.print(
-        f"[green]Target added[/green] ID={data['id']} value={data['value']} type={data['type']}"
+        f"[green]Target added[/green] ID={data.get('id', '-')} "
+        f"value={data.get('value', '-')} type={data.get('type', '-')}"
     )
 
 
@@ -103,16 +129,27 @@ def list_engagements(
     token: str = typer.Option("", "--token"),
 ):
     """List engagements."""
-    r = httpx.get(f"{api_url}/api/engagements", headers=_headers(token or None))
+    r = _call("GET", f"{api_url}/api/engagements", headers=_headers(token or None))
     if r.status_code != 200:
-        console.print(f"[red]Failed: {r.status_code}[/red]")
+        console.print(f"[red]Failed: {r.status_code} {r.text}[/red]")
         raise typer.Exit(1)
-    items = r.json()
+    try:
+        items = r.json()
+    except Exception as exc:
+        console.print(f"[red]Invalid response: {exc}[/red]")
+        raise typer.Exit(1) from exc
     table = Table(title="Engagements")
     table.add_column("ID")
     table.add_column("Name")
     table.add_column("Mode")
     table.add_column("Status")
-    for it in items:
-        table.add_row(str(it["id"])[:8], it["name"], it["mode"], it["status"])
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        table.add_row(
+            str(it.get("id", "-"))[:8],
+            str(it.get("name", "-")),
+            str(it.get("mode", "-")),
+            str(it.get("status", "-")),
+        )
     console.print(table)

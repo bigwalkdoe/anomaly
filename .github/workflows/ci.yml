@@ -92,16 +92,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit
       - name: Run Bandit security scan
         run: |
-          pip install bandit
-          bandit -r packages/ apps/ -f json -o bandit-results.json || true
-          bandit -r packages/ apps/ -f txt || true
+          set -e
+          bandit -r packages apps -f json -o bandit-results.json || status=$?
+          bandit -r packages apps -f txt || true
+          exit ${status:-0}
       - name: Upload Bandit results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bandit-results
           path: bandit-results.json
+          if-no-files-found: ignore
 
   dependency-scan:
     runs-on: ubuntu-latest
@@ -110,16 +120,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run Safety dependency scan
+      - name: Install audit tools
         run: |
-          pip install safety
-          safety check --json --output safety-results.json || true
-          safety check || true
-      - name: Upload Safety results
+          python -m pip install --upgrade pip
+          pip install uv pip-audit safety
+      - name: Export project-managed dependencies
+        run: |
+          uv export --format requirements-txt --no-hashes --all-packages > project-requirements.txt
+      - name: Run pip-audit (project-managed dependencies)
+        run: |
+          set -e
+          pip-audit -r project-requirements.txt -f json -o pip-audit-results.json || status=$?
+          pip-audit -r project-requirements.txt || true
+          exit ${status:-0}
+      - name: Run Safety (best-effort, informational)
+        continue-on-error: true
+        run: |
+          safety check -r project-requirements.txt --json --output safety-results.json || true
+          safety check -r project-requirements.txt || true
+      - name: Upload dependency scan results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: safety-results
-          path: safety-results.json
+          name: dependency-scan-results
+          path: |
+            project-requirements.txt
+            pip-audit-results.json
+            safety-results.json
+          if-no-files-found: ignore
 
   web:
     runs-on: ubuntu-latest

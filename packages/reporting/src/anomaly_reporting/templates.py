@@ -10,7 +10,15 @@ def markdown_template(
     lines = [f"# Report: {engagement_name}", ""]
     if ctx:
         lines.append("## Traceability")
-        for key in ("organization_id", "engagement_id", "job_id", "run_id", "execution_id"):
+        for key in (
+            "organization_id",
+            "engagement_id",
+            "job_id",
+            "run_id",
+            "execution_id",
+            "report_sha256",
+            "content_sha256",
+        ):
             if key in ctx and ctx[key] is not None:
                 lines.append(f"- {key}: {ctx[key]}")
         evidence_ids = ctx.get("evidence_ids") or []

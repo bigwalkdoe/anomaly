@@ -15,10 +15,10 @@ from anomaly_core.auth import (
 from anomaly_core.models import LoginAttempt, MFASecret, Role, RoleName, User
 from anomaly_core.rbac import ensure_default_rbac
 from anomaly_core.tenancy import get_user_memberships
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 
-from anomaly_api.deps import CurrentUser, DbSession, get_optional_user
+from anomaly_api.deps import CurrentUser, DbSession, get_current_user, get_optional_user
 from anomaly_api.schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -199,12 +199,15 @@ async def me(user: CurrentUser, db: DbSession) -> UserResponse:
 
 
 @router.get("/verify")
-async def verify_token(payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Basic token verification endpoint for client-side checks"""
-    return {"valid": True}
-
-
-@router.post("/logout", status_code=204)
-async def logout_endpoint() -> None:
-    # Client-side token revocation
-    return None
+async def verify_token(request: Request, db: DbSession) -> dict[str, Any]:
+    """Verify the presented Bearer access token."""
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth or not auth.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    try:
+        user = await get_current_user(request, db)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
+    return {"valid": True, "user_id": str(user.id)}

@@ -79,6 +79,7 @@ async def create_finding(
     if has_role(user, RoleName.client_viewer) and not has_role(user, RoleName.admin):
         raise HTTPException(status_code=403, detail="Forbidden")
     finding = Finding(
+        organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
         title=payload.title,
         severity=FindingSeverity(payload.severity),
@@ -93,6 +94,7 @@ async def create_finding(
         resource_type="finding",
         resource_id=finding.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"title": finding.title},
         db=db,
     )
@@ -143,6 +145,7 @@ async def update_finding(
         resource_type="finding",
         resource_id=finding.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata=update_data,
         db=db,
     )
@@ -170,6 +173,7 @@ async def transition_finding_status(
         resource_type="finding",
         resource_id=finding.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={"status": finding.status.value},
         db=db,
     )
@@ -194,6 +198,7 @@ async def delete_finding(finding_id: UUID, user: CurrentUser, db: DbSession):
         resource_type="finding",
         resource_id=finding.id,
         engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
         metadata={},
         db=db,
     )

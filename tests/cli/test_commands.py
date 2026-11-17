@@ -192,3 +192,111 @@ def test_sync_status_and_spectre(monkeypatch):
     assert res.exit_code == 0
     assert "Synced 1 findings" in res.output
     assert posts and posts[0][1]["title"] == "X"
+
+
+def test_engagements_list_handles_http_error(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return Resp(401, {"detail": "Not authenticated"}, text='{"detail":"Not authenticated"}')
+
+    monkeypatch.setattr("anomaly_cli.commands.engagements.httpx.get", fake_get)
+    res = runner.invoke(app, ["engagements", "list", "--api-url", "http://x"])
+    assert res.exit_code == 1
+    assert "401" in res.output
+
+
+def test_engagements_list_handles_network_error(monkeypatch):
+    import httpx
+
+    def fake_get(url, headers=None, timeout=None):
+        raise httpx.ConnectError("boom")
+
+    monkeypatch.setattr("anomaly_cli.commands.engagements.httpx.get", fake_get)
+    res = runner.invoke(app, ["engagements", "list", "--api-url", "http://x"])
+    assert res.exit_code == 1
+    assert "Request failed" in res.output or "boom" in res.output
+
+
+def test_findings_update_sends_empty_object_when_no_fields(monkeypatch):
+    captured = {}
+
+    def fake_patch(url, headers=None, json=None, timeout=None):
+        captured["json"] = json
+        return Resp(
+            200, {"id": "f1", "status": "open", "title": "T", "severity": "low", "description": ""}
+        )
+
+    monkeypatch.setattr("anomaly_cli.commands.findings.httpx.patch", fake_patch)
+    res = runner.invoke(app, ["findings", "update", "--id", "f1", "--api-url", "http://x"])
+    assert res.exit_code == 0
+    assert captured["json"] == {}
+
+
+def test_sync_spectre_reports_post_failures(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return Resp(
+            200,
+            {
+                "findings": [
+                    {"title": "A", "severity": "low", "description": "d"},
+                    {"title": "B", "severity": "high", "description": "d"},
+                ]
+            },
+        )
+
+    responses = [Resp(201, {"id": "f1"}), Resp(403, {"detail": "Forbidden"})]
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        return responses.pop(0)
+
+    monkeypatch.setattr("anomaly_cli.commands.sync.httpx.get", fake_get)
+    monkeypatch.setattr("anomaly_cli.commands.sync.httpx.post", fake_post)
+    res = runner.invoke(
+        app,
+        ["sync", "spectre", "--id", "eng-1", "--spectre-url", "http://s", "--api-url", "http://x"],
+    )
+    assert res.exit_code == 0
+    assert "Synced 1" in res.output
+    assert "failed" in res.output.lower() or "1 failed" in res.output
+
+
+def test_reports_generate_network_error(monkeypatch):
+    import httpx
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        raise httpx.ReadTimeout("timeout")
+
+    monkeypatch.setattr("anomaly_cli.commands.reports.httpx.get", fake_get)
+    res = runner.invoke(
+        app,
+        ["reports", "generate", "--id", "eng-1", "--api-url", "http://x"],
+    )
+    assert res.exit_code == 1
+    assert "Request failed" in res.output or "timeout" in res.output
+
+
+def test_ai_suggest_tools_invalid_context_json():
+    res = runner.invoke(
+        app,
+        ["ai", "suggest-tools", "--objective", "scan", "--context-json", "{not-json"],
+    )
+    assert res.exit_code == 1
+    assert "Invalid --context-json" in res.output
+
+
+def test_runs_start_invalid_param_format():
+    res = runner.invoke(
+        app,
+        ["runs", "start", "--id", "eng-1", "--param", "noequals", "--api-url", "http://x"],
+    )
+    assert res.exit_code == 1
+    assert "key=value" in res.output
+
+
+def test_engagements_list_handles_missing_fields(monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        return Resp(200, [{"id": "abcd1234-0000", "name": "E"}])
+
+    monkeypatch.setattr("anomaly_cli.commands.engagements.httpx.get", fake_get)
+    res = runner.invoke(app, ["engagements", "list", "--api-url", "http://x"])
+    assert res.exit_code == 0
+    assert "E" in res.output

@@ -23,7 +23,10 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 - [ ] **Security & dependency CI jobs** *(in progress)*
   - **Progress (2026-11-10):** `docker` runner image build succeeded. `gitleaks` findings triaged (no tracked source secrets; config updated, targeted rescans clean). Bandit hardened/triaged: switched nmap to `defusedxml`, added justified `#nosec` suppressions for intentional defensive patterns and fixed historical migration case; `python3 -m bandit -r packages apps -q` exits 0 with suppressed findings documented in code. `safety check` failed in this environment (tool/runtime issue); `pip-audit` ran and reported environment-wide dependency vulnerabilities (many outside project-managed deps) — requires CI/curated remediation.
-  - **Actions:** re-run Safety/pip-audit in CI, remediate or formally accept dependency findings, and keep Bandit/gitleaks gates green with documented rationale.
+  - **Progress (2026-11-17):** restored Bandit gate locally by adding missing justified `#nosec B110` in `apps/api/src/anomaly_api/routers/v1_slice.py` inline-run path (`python3 -m bandit -r packages apps -q` exits 0). Re-ran `python3 -m pip_audit` (env audit) and observed 122 reported vulns across 14 installed packages (largely tooling/global env deps such as `aiohttp`, `pillow`, `poetry`, `uv`, `virtualenv`, `dulwich`, etc.); project-scoped/curated remediation and CI-safe Safety/pip-audit execution remain required.
+  - **Progress (2026-11-17, follow-up):** `gitleaks detect --source . --no-banner --redact` reported no leaks (exit 0). Project-scoped dependency audit via `uv export --format requirements-txt --all-packages` + `python3 -m pip_audit -r ...` found no known vulnerabilities in auditable third-party deps (exit 0; local workspace packages skipped as not on PyPI).
+  - **Progress (2026-11-17, CI wiring):** updated `.github/workflows/ci.yml` to enforce Bandit on `packages apps` and run project-scoped `pip-audit` against `uv export`ed dependencies (artifacts uploaded); Safety retained as best-effort/informational against exported deps. CI execution still pending in GitHub runners.
+  - **Actions:** validate the updated CI jobs in CI, remediate or formally accept any reported dependency findings, and keep Bandit/gitleaks gates green with documented rationale.
   - **Done when:** jobs run clean or with documented, approved exceptions.
 
 - [x] **Runner image build validation**
@@ -56,13 +59,16 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 - [ ] **Harden newly added CLI commands** *(in progress)*
   - **Progress (2026-11-10):** added mocked-HTTP CLI tests covering help/command discovery, config show/set/unset, engagements/findings list, runs start/status, reports generate, and sync status/spectre (`tests/cli/test_commands.py`).
-  - **Remaining:** validate against live API contracts/edge cases and expand coverage as needed.
+  - **Progress (2026-11-16):** hardened CLI command modules (`apps/cli/src/anomaly_cli/commands/*`) with consistent request timeouts/error handling (network/HTTP/invalid JSON), defensive response parsing, empty findings-update payload handling (`{}`), and sync-spectre failure reporting; expanded `tests/cli/test_commands.py` with edge-case coverage (HTTP/network errors, invalid params/context, missing fields, partial sync failures). Validated against current API router contracts for engagements/findings/runs/reports/AI/dashboard endpoints; CLI tests pass (15) and Ruff clean on touched files.
+  - **Remaining:** validate against a live running API environment (end-to-end) and continue expanding coverage for additional commands/flows as they evolve.
 
 - [x] **Address Pydantic v2 deprecation warnings**
   - **Progress (2026-11-10):** migrated class-based `Config` to `ConfigDict(from_attributes=True)` in `apps/api/src/anomaly_api/schemas/engagement.py` and routers (`api_keys`, `findings`, `playbooks`, `runs`, `schedules`); targeted API AI tests now run without prior Pydantic config deprecation warnings.
 
-- [ ] **Review API/browser security posture**
-  - Environment-specific CORS, cookie/CSRF/session hardening, and consistent authz checks on WS/uploads/exports.
+- [ ] **Review API/browser security posture** *(in progress)*
+  - **Progress (2026-11-16):** made CORS environment-specific (`ANOMALY_CORS_ORIGINS`/`CORS_ALLOW_ORIGINS`, credentials disabled for wildcard), hardened upload handling (filename sanitization, configurable max size), removed duplicate no-op logout route and fixed `/api/auth/verify` to require/validate Bearer tokens; reviewed WS/upload/export surfaces (WS run/notification endpoints authenticate tokens and enforce access checks; upload requires engagement access; no dedicated export endpoints found). Auth uses Bearer tokens (not cookies), so CSRF exposure is currently limited.
+  - **Progress (2026-11-17):** hardened webhook stub (`/api/webhooks` admin-only; create returns 501 not implemented) and added configurable metrics protection (`ANOMALY_METRICS_AUTH_REQUIRED` requires authenticated admin when enabled; default unchanged).
+  - **Remaining:** add/validate security headers and session/cookie hardening if cookies are introduced, confirm WS origin/proxy/logging posture for token-in-query, and expand automated checks for WS/upload/auth edge cases in CI-like environments.
 
 - [x] **Migration/tooling hygiene** *(partial)*
   - **Progress (2026-11-10):** removed duplicate parallel Alembic chain files from `packages/core/alembic/versions`, leaving single head `f6b770b737bd`. Additional cleanup may be needed for duplicate revisions in worktrees/copies and DB stamp/sync.

@@ -8,9 +8,30 @@ from rich.table import Table
 app = typer.Typer(name="findings", help="Finding management")
 console = Console()
 
+DEFAULT_TIMEOUT = 30.0
+
 
 def _headers(token: str | None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"} if token else {}
+
+
+def _call(method: str, url: str, **kwargs):
+    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+    fn = {
+        "GET": httpx.get,
+        "POST": httpx.post,
+        "PUT": httpx.put,
+        "PATCH": httpx.patch,
+        "DELETE": httpx.delete,
+    }[method.upper()]
+    try:
+        return fn(url, **kwargs)
+    except httpx.RequestError as exc:
+        console.print(f"[red]Request failed: {exc}[/red]")
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        console.print(f"[red]Unexpected error: {exc}[/red]")
+        raise typer.Exit(1) from exc
 
 
 @app.command("create")
@@ -25,7 +46,8 @@ def create(
     token: str = typer.Option("", "--token"),
 ):
     """Create a finding."""
-    r = httpx.post(
+    r = _call(
+        "POST",
         f"{api_url}/api/engagements/{engagement_id}/findings",
         headers=_headers(token or None),
         json={"title": title, "severity": severity, "description": description},
@@ -35,8 +57,8 @@ def create(
         raise typer.Exit(1)
     data = r.json()
     console.print(
-        f"[green]Finding created[/green] ID={data['id']} "
-        f"title={data['title']} severity={data['severity']}"
+        f"[green]Finding created[/green] ID={data.get('id', '-')} "
+        f"title={data.get('title', '-')} severity={data.get('severity', '-')}"
     )
 
 
@@ -64,10 +86,11 @@ def update(
     if remediation:
         payload["remediation"] = remediation
 
-    r = httpx.patch(
+    r = _call(
+        "PATCH",
         f"{api_url}/api/findings/{finding_id}",
         headers=_headers(token or None),
-        json=payload or None,
+        json=payload,
     )
     if r.status_code == 404:
         console.print("[red]Finding not found[/red]")
@@ -76,7 +99,9 @@ def update(
         console.print(f"[red]Failed: {r.status_code} {r.text}[/red]")
         raise typer.Exit(1)
     data = r.json()
-    console.print(f"[green]Finding updated[/green] ID={data['id']} status={data['status']}")
+    console.print(
+        f"[green]Finding updated[/green] ID={data.get('id', '-')} status={data.get('status', '-')}"
+    )
 
 
 @app.command("list")
@@ -86,19 +111,31 @@ def list_findings(
     token: str = typer.Option("", "--token"),
 ):
     """List findings for an engagement."""
-    r = httpx.get(
+    r = _call(
+        "GET",
         f"{api_url}/api/engagements/{engagement_id}/findings",
         headers=_headers(token or None),
     )
     if r.status_code != 200:
-        console.print(f"[red]Failed: {r.status_code}[/red]")
+        console.print(f"[red]Failed: {r.status_code} {r.text}[/red]")
         raise typer.Exit(1)
-    items = r.json()
+    try:
+        items = r.json()
+    except Exception as exc:
+        console.print(f"[red]Invalid response: {exc}[/red]")
+        raise typer.Exit(1) from exc
     table = Table(title="Findings")
     table.add_column("ID")
     table.add_column("Title")
     table.add_column("Severity")
     table.add_column("Status")
-    for it in items:
-        table.add_row(str(it["id"])[:8], it["title"], it["severity"], it["status"])
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        table.add_row(
+            str(it.get("id", "-"))[:8],
+            str(it.get("title", "-")),
+            str(it.get("severity", "-")),
+            str(it.get("status", "-")),
+        )
     console.print(table)
