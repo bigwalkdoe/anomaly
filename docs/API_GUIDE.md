@@ -1,8 +1,8 @@
 # Anomaly API Guide
 
-Base URL: `http://localhost:8000/api`
+Base URL: `http://localhost:20101/api`
 
-Interactive documentation: `http://localhost:8000/docs`
+Interactive documentation: `http://localhost:20101/docs`
 
 ## Authentication
 
@@ -19,7 +19,7 @@ Authorization: Bearer <access_token>
 Tokens expire after 15 minutes. Use the refresh token to obtain a new access token:
 
 ```bash
-curl -X POST http://localhost:8000/api/auth/refresh \
+curl -X POST http://localhost:20101/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refresh_token":"<refresh_token>"}'
 ```
