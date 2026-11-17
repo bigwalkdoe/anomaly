@@ -6,7 +6,7 @@ COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --legacy-peer-deps
 
 COPY apps/web/ ./
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_API_URL=http://localhost:20101
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN npm run build
 

@@ -14,10 +14,10 @@ This directory contains load and performance tests for the Anomaly platform.
 pip install locust
 
 # Run load test against local API
-locust -f locustfile.py --host http://localhost:8000
+locust -f locustfile.py --host http://localhost:20101
 
 # Run headless
-locust -f locustfile.py --host http://localhost:8000 --headless -u 10 -r 2 -t 60s
+locust -f locustfile.py --host http://localhost:20101 --headless -u 10 -r 2 -t 60s
 ```
 
 ## Locustfile

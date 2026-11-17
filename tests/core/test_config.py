@@ -5,10 +5,10 @@ from anomaly_core.config import Settings
 
 def test_ai_settings_defaults(monkeypatch):
     # Provide required fields so Settings can instantiate without relying on .env
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:5432/db")
-    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost:20102/db")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:20103/0")
     monkeypatch.setenv("JWT_SECRET", "secret")
-    monkeypatch.setenv("MINIO_ENDPOINT", "localhost:9000")
+    monkeypatch.setenv("MINIO_ENDPOINT", "localhost:20104")
     monkeypatch.setenv("MINIO_ACCESS_KEY", "minio")
     monkeypatch.setenv("MINIO_SECRET_KEY", "miniosecret")
 

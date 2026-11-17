@@ -56,9 +56,9 @@ services:
       MINIO_BUCKET: anomaly-evidence
       RUNNER_IMAGE: anomaly-runner:prod
       RUNNER_NETWORK: anomaly-net
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:20100}
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:20101:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,14 +74,14 @@ services:
       context: .
       dockerfile: infra/web/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:20101}
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:20101}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:20100:3000"
     networks:
       - anomaly-net
 

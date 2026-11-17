@@ -20,13 +20,13 @@ docker compose up -d
 ```
 
 This starts:
-- Postgres 16 (port 5432)
-- Redis 7 (port 6379)
-- MinIO (port 9000)
-- Anomaly API (port 8000)
+- Postgres 16 (host port 20102)
+- Redis 7 (host port 20103)
+- MinIO (host ports 20104/20105)
+- Anomaly API (host port 20101)
 - Anomaly Worker
 
-Access the API at http://localhost:8000/docs
+Access the API at http://localhost:20101/docs
 
 #### Using docker-compose.prod.yml (Production)
 
@@ -42,10 +42,10 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 Production compose uses Docker secrets and binds to:
-- API: port 8000
-- Postgres: port 5432
-- Redis: port 6379
-- MinIO: port 9000
+- API: host port 20101
+- Postgres: internal only (no host publish)
+- Redis: internal only (no host publish)
+- MinIO: internal only (no host publish)
 
 ### Option 2: Kubernetes (Helm)
 
@@ -98,11 +98,11 @@ ingress:
 # Install dependencies
 pip install -e packages/core -e packages/tools -e packages/ai -e packages/reporting -e packages/integrations -e packages/common -e apps/api -e apps/worker
 
-# Set environment variables
-export DATABASE_URL="postgresql+asyncpg://anomaly:anomaly@localhost:5432/anomaly"
-export REDIS_URL="redis://localhost:6379/0"
+# Set environment variables (host-access examples for local dev)
+export DATABASE_URL="postgresql+asyncpg://anomaly:anomaly@localhost:20102/anomaly"
+export REDIS_URL="redis://localhost:20103/0"
 export JWT_SECRET="***REMOVED***"
-export MINIO_ENDPOINT="localhost:9000"
+export MINIO_ENDPOINT="localhost:20104"
 export MINIO_ACCESS_KEY="minioadmin"
 export MINIO_SECRET_KEY="minioadmin"
 export MINIO_BUCKET="anomaly-evidence"

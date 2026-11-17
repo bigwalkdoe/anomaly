@@ -28,7 +28,7 @@ def load_config():
     if CONFIG_FILE.exists():
         return json.loads(CONFIG_FILE.read_text())
     return {
-        "api_url": os.environ.get("ANOMALY_API_URL", "http://localhost:8000"),
+        "api_url": os.environ.get("ANOMALY_API_URL", "http://localhost:20101"),
         "token": os.environ.get("ANOMALY_TOKEN"),
     }
 

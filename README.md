@@ -48,8 +48,8 @@ cd anomaly
 docker compose up -d
 ```
 
-- Web UI: http://localhost:3000
-- API docs: http://localhost:8000/docs
+- Web UI: http://localhost:20100
+- API docs: http://localhost:20101/docs
 
 > Review `docker-compose.yml` / `docker-compose.prod.yml` and required secrets/env configuration before exposing any environment beyond local development.
 
@@ -61,10 +61,10 @@ pip install -e packages/core -e packages/tools -e packages/ai -e packages/report
   -e packages/integrations -e packages/common -e apps/api -e apps/worker -e apps/cli
 
 # Configure environment (example values)
-export DATABASE_URL="postgresql+asyncpg://anomaly:anomaly@localhost:5432/anomaly"
-export REDIS_URL="redis://localhost:6379/0"
+export DATABASE_URL="postgresql+asyncpg://anomaly:anomaly@localhost:20102/anomaly"
+export REDIS_URL="redis://localhost:20103/0"
 export JWT_SECRET="change-me"
-export MINIO_ENDPOINT="localhost:9000"
+export MINIO_ENDPOINT="localhost:20104"
 export MINIO_ACCESS_KEY="minioadmin"
 export MINIO_SECRET_KEY="minioadmin"
 
