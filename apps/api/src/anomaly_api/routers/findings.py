@@ -111,23 +111,35 @@ async def get_finding(finding_id: UUID, user: CurrentUser, db: DbSession):
     engagement = await db.get(Engagement, finding.engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Finding not found")
-    if not await engagement_accessible(db, user, engagement):
+    # Hide existence from non-members/cross-tenant callers.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
         raise HTTPException(status_code=404, detail="Finding not found")
     return FindingResponse.model_validate(finding)
+
+
+async def _require_finding_mutation_access(
+    db: DbSession, user: CurrentUser, finding_id: UUID
+) -> tuple[Finding, Engagement]:
+    finding = await db.get(Finding, finding_id)
+    if finding is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    engagement = await db.get(Engagement, finding.engagement_id)
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    # Hide existence from non-members/cross-tenant callers.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+        raise HTTPException(status_code=404, detail="Finding not found")
+    # Known/accessible finding but insufficient role for mutation.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return finding, engagement
 
 
 @router.patch("/api/findings/{finding_id}", response_model=FindingResponse)
 async def update_finding(
     finding_id: UUID, payload: FindingUpdate, user: CurrentUser, db: DbSession
 ):
-    finding = await db.get(Finding, finding_id)
-    if finding is None:
-        raise HTTPException(status_code=404, detail="Finding not found")
-    engagement = await db.get(Engagement, finding.engagement_id)
-    if engagement is None or not await engagement_accessible(
-        db, user, engagement, min_role=RoleName.pentester
-    ):
-        raise HTTPException(status_code=404, detail="Finding not found")
+    finding, engagement = await _require_finding_mutation_access(db, user, finding_id)
     update_data = payload.model_dump(exclude_unset=True)
     if "status" in update_data:
         finding.status = FindingStatus(update_data["status"])
@@ -158,14 +170,7 @@ async def update_finding(
 async def transition_finding_status(
     finding_id: UUID, payload: FindingStatusTransition, user: CurrentUser, db: DbSession
 ):
-    finding = await db.get(Finding, finding_id)
-    if finding is None:
-        raise HTTPException(status_code=404, detail="Finding not found")
-    engagement = await db.get(Engagement, finding.engagement_id)
-    if engagement is None or not await engagement_accessible(
-        db, user, engagement, min_role=RoleName.pentester
-    ):
-        raise HTTPException(status_code=404, detail="Finding not found")
+    finding, engagement = await _require_finding_mutation_access(db, user, finding_id)
     finding.status = FindingStatus(payload.status)
     await AuditService.log(
         actor_id=user.id,
@@ -184,14 +189,7 @@ async def transition_finding_status(
 
 @router.delete("/api/findings/{finding_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_finding(finding_id: UUID, user: CurrentUser, db: DbSession):
-    finding = await db.get(Finding, finding_id)
-    if finding is None:
-        raise HTTPException(status_code=404, detail="Finding not found")
-    engagement = await db.get(Engagement, finding.engagement_id)
-    if engagement is None or not await engagement_accessible(
-        db, user, engagement, min_role=RoleName.pentester
-    ):
-        raise HTTPException(status_code=404, detail="Finding not found")
+    finding, engagement = await _require_finding_mutation_access(db, user, finding_id)
     await AuditService.log(
         actor_id=user.id,
         action="finding.delete",

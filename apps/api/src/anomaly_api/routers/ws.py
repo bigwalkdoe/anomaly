@@ -107,8 +107,9 @@ async def run_websocket(
             await websocket.close(code=4404, reason="Run not found")
             return
         engagement = await db.get(Engagement, run.engagement_id)
+        # Hide existence for inaccessible/cross-tenant runs.
         if engagement is None or not await engagement_accessible(db, user, engagement):
-            await websocket.close(code=4403, reason="Forbidden")
+            await websocket.close(code=4404, reason="Run not found")
             return
 
     await manager.connect(websocket, run_id)

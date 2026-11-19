@@ -294,7 +294,8 @@ async def test_run_websocket_forbidden_for_cross_tenant_run(db_session):
     )
     assert ws.accepted is False
     assert ws.close_event is not None
-    assert ws.close_event[0] == 4403
+    # Hide existence for inaccessible/cross-tenant runs.
+    assert ws.close_event[0] == 4404
 
 
 @pytest.mark.asyncio
