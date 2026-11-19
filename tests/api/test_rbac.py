@@ -242,6 +242,46 @@ async def test_run_access_across_engagements_returns_404(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_client_viewer_cannot_read_run_detail_or_status(client, db_session):
+    from anomaly_core.models import Run, RunStatus
+
+    owner = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.admin),
+        "owner-run-view@example.com",
+        "Owner",
+    )
+    viewer = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.client_viewer),
+        "viewer-run-view@example.com",
+        "Viewer",
+    )
+    eng = Engagement(name="E1", mode=EngagementMode.client, owner_id=owner.id)
+    db_session.add(eng)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng.id, user_id=viewer.id, role=RoleName.client_viewer)
+    )
+    run = Run(
+        engagement_id=eng.id,
+        user_id=owner.id,
+        tool="nmap",
+        status=RunStatus.queued,
+    )
+    db_session.add(run)
+    await db_session.commit()
+
+    headers = _auth(viewer)
+    resp = await client.get(f"/api/runs/{run.id}", headers=headers)
+    assert resp.status_code == 403
+    resp_v1 = await client.get(f"/api/v1/runs/{run.id}", headers=headers)
+    assert resp_v1.status_code == 403
+    resp_ws_status = await client.get(f"/api/ws/runs/{run.id}/status", headers=headers)
+    assert resp_ws_status.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_seeded_roles_have_default_permissions(db_session):
     admin = await _get_role(db_session, RoleName.admin)
     pentester = await _get_role(db_session, RoleName.pentester)
