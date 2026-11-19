@@ -105,6 +105,8 @@ async def test_client_viewer_no_runs_and_no_create(client, db_session):
     # read findings/reports is allowed
     resp_findings = await client.get(f"/api/engagements/{eng.id}/findings", headers=headers)
     assert resp_findings.status_code == 200
+    resp_reports = await client.get(f"/api/reports/engagements/{eng.id}", headers=headers)
+    assert resp_reports.status_code == 200
     # runs are never readable for client_viewer
     resp_runs = await client.get(f"/api/engagements/{eng.id}/runs", headers=headers)
     assert resp_runs.status_code == 403
@@ -122,6 +124,15 @@ async def test_client_viewer_no_runs_and_no_create(client, db_session):
         json={"tool": "nmap", "targets": []},
     )
     assert resp_run.status_code == 403
+    # report generation persists artifacts and is forbidden for client_viewer
+    resp_report_gen = await client.get(
+        f"/api/reports/engagements/{eng.id}/generate", headers=headers
+    )
+    assert resp_report_gen.status_code == 403
+    resp_report_gen_v1 = await client.post(
+        f"/api/v1/engagements/{eng.id}/reports", headers=headers, json={"format": "markdown"}
+    )
+    assert resp_report_gen_v1.status_code == 403
 
 
 @pytest.mark.asyncio
