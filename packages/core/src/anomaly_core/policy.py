@@ -36,7 +36,10 @@ def evaluate_assessment_request(
     """
     if not engagement_approved_for_assessment(engagement):
         status = getattr(engagement, "status", None)
-        status_val = status.value if hasattr(status, "value") else str(status)
+        if status is None:
+            status_val = "unknown"
+        else:
+            status_val = status.value if hasattr(status, "value") else str(status)
         return PolicyDecision(
             allowed=False,
             reason="engagement_not_approved",

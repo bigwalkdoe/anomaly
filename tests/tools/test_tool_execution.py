@@ -2,7 +2,13 @@ import uuid
 
 import pytest
 from anomaly_core.auth import hash_password
-from anomaly_core.models.engagement import Engagement, EngagementMode, Scope, ScopeEntry
+from anomaly_core.models.engagement import (
+    Engagement,
+    EngagementMode,
+    EngagementStatus,
+    Scope,
+    ScopeEntry,
+)
 from anomaly_core.models.finding import Finding
 from anomaly_core.models.run import Run, RunStatus
 from anomaly_core.models.user import Role, RoleName, User, UserRole
@@ -31,7 +37,12 @@ async def _setup(db_session, tool: str, targets: list[str]):
     db_session.add(user)
     await db_session.flush()
     db_session.add(UserRole(user_id=user.id, role_id=role.id))
-    eng = Engagement(name=f"E-{tool}", mode=EngagementMode.own_infra, owner_id=user.id)
+    eng = Engagement(
+        name=f"E-{tool}",
+        mode=EngagementMode.own_infra,
+        owner_id=user.id,
+        status=EngagementStatus.approved,
+    )
     db_session.add(eng)
     await db_session.flush()
     scope = Scope(engagement_id=eng.id)

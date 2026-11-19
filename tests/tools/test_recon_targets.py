@@ -27,7 +27,14 @@ async def test_recon_creates_discovered_targets(db_session):
     import uuid
 
     from anomaly_core.auth import hash_password
-    from anomaly_core.models.engagement import Engagement, EngagementMode, Scope, Target
+    from anomaly_core.models.engagement import (
+        Engagement,
+        EngagementMode,
+        EngagementStatus,
+        Scope,
+        ScopeEntry,
+        Target,
+    )
     from anomaly_core.models.run import Run, RunStatus
     from anomaly_core.models.user import Role, RoleName, User, UserRole
     from anomaly_core.runner import FakeRunner, RunResult
@@ -45,10 +52,18 @@ async def test_recon_creates_discovered_targets(db_session):
     db_session.add(user)
     await db_session.flush()
     db_session.add(UserRole(user_id=user.id, role_id=role.id))
-    eng = Engagement(name="Recon", mode=EngagementMode.own_infra, owner_id=user.id)
+    eng = Engagement(
+        name="Recon",
+        mode=EngagementMode.own_infra,
+        owner_id=user.id,
+        status=EngagementStatus.approved,
+    )
     db_session.add(eng)
     await db_session.flush()
-    db_session.add(Scope(engagement_id=eng.id))
+    scope = Scope(engagement_id=eng.id)
+    db_session.add(scope)
+    await db_session.flush()
+    db_session.add(ScopeEntry(scope_id=scope.id, kind="in", target_value="example.com"))
     run = Run(
         engagement_id=eng.id,
         user_id=user.id,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Annotated, Any
 
 from anomaly_core.auth import (
@@ -18,7 +19,7 @@ from anomaly_core.tenancy import get_user_memberships
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 
-from anomaly_api.deps import CurrentUser, DbSession, get_current_user, get_optional_user
+from anomaly_api.deps import CurrentUser, DbSession, get_optional_user
 from anomaly_api.schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -204,10 +205,18 @@ async def verify_token(request: Request, db: DbSession) -> dict[str, Any]:
     auth = request.headers.get("authorization") or request.headers.get("Authorization")
     if not auth or not auth.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = auth.split(" ", 1)[1].strip()
     try:
-        user = await get_current_user(request, db)
-    except HTTPException:
-        raise
+        payload = decode_token(token)
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
+    if payload.type != "access":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+    try:
+        user_id = uuid.UUID(payload.sub)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
+    user = await db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Invalid token")
     return {"valid": True, "user_id": str(user.id)}
