@@ -133,6 +133,10 @@ async def test_client_viewer_no_runs_and_no_create(client, db_session):
         f"/api/v1/engagements/{eng.id}/reports", headers=headers, json={"format": "markdown"}
     )
     assert resp_report_gen_v1.status_code == 403
+    resp_report_gen_v1_get = await client.get(
+        f"/api/v1/engagements/{eng.id}/reports/generate", headers=headers
+    )
+    assert resp_report_gen_v1_get.status_code == 403
 
 
 @pytest.mark.asyncio
