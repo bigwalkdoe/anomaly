@@ -4,10 +4,8 @@ import contextlib
 from typing import Annotated
 from uuid import UUID
 
-from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
-from anomaly_core.execution import build_execution_manifest
-from anomaly_core.models import Engagement, Playbook, PlaybookStep, RoleName, Run, RunStatus
+from anomaly_core.models import Engagement, Playbook, PlaybookStep, RoleName
 from anomaly_core.runner import FakeRunner
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from anomaly_api.assessment import (
     enforce_assessment_policy,
+    enqueue_assessment_run,
     inline_execution_enabled,
     load_engagement_with_scope,
 )
@@ -215,7 +214,6 @@ async def execute_playbook(
     eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
     await enforce_assessment_policy(db, user, engagement, targets, scope_engagement=eng_loaded)
 
-    org_id = getattr(engagement, "organization_id", None)
     runs_created = 0
     runner = FakeRunner()
     run_ids = []
@@ -227,48 +225,27 @@ async def execute_playbook(
             "params": step.params,
             "targets": targets,
         }
-        run = Run(
-            organization_id=org_id,
-            engagement_id=engagement.id,
-            user_id=user.id,
-            tool=step.tool,
-            status=RunStatus.queued,
-            scope_warning=False,
-            params=run_params,
-        )
-        db.add(run)
-        await db.flush()
-        manifest = build_execution_manifest(
-            run_id=run.id,
+        run = await enqueue_assessment_run(
+            db,
+            user=user,
             engagement=engagement,
             tool=step.tool,
             targets=targets,
-            params={
+            run_params=run_params,
+            manifest_params={
                 "playbook_id": str(playbook.id),
                 "step_id": str(step.id),
                 "params": step.params,
             },
-            policy_decision={"allowed": True, "reason": None},
-        )
-        run.params = {**run_params, "execution_manifest": manifest.to_dict()}
-        run_ids.append(run.id)
-        runs_created += 1
-        await AuditService.log(
-            actor_id=user.id,
-            action="playbook.step.run",
-            resource_type="run",
-            resource_id=run.id,
-            engagement_id=engagement.id,
-            organization_id=org_id,
-            metadata={
+            enqueue_action="playbook.step.run",
+            enqueue_metadata={
                 "playbook_id": str(playbook.id),
                 "step_id": str(step.id),
-                "tool": step.tool,
-                "targets": targets,
-                "manifest_ref": str(run.id),
             },
-            db=db,
+            commit=False,
         )
+        run_ids.append(run.id)
+        runs_created += 1
     await db.commit()
 
     # Execute runs inline if configured

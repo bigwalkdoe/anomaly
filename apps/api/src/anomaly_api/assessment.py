@@ -70,6 +70,7 @@ async def enqueue_assessment_run(
     manifest_params: dict[str, Any] | None = None,
     enqueue_action: str = "run.enqueue",
     enqueue_metadata: dict[str, Any] | None = None,
+    commit: bool = True,
 ) -> Run:
     params = dict(params or {})
     # Ensure scope-checked targets are preserved in stored run params.
@@ -115,8 +116,9 @@ async def enqueue_assessment_run(
         },
         db=db,
     )
-    await db.commit()
-    await db.refresh(run)
+    if commit:
+        await db.commit()
+        await db.refresh(run)
     return run
 
 
