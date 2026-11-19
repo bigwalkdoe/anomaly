@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import os
 from typing import Annotated
 from uuid import UUID
 
-from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
-from anomaly_core.execution import build_execution_manifest
-from anomaly_core.models import Engagement, RoleName, Run, RunStatus
-from anomaly_core.policy import evaluate_assessment_request
+from anomaly_core.models import Engagement, RoleName, Run
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from anomaly_api.assessment import (
+    enforce_assessment_policy,
+    enqueue_assessment_run,
+    inline_execution_enabled,
+    load_engagement_with_scope,
+)
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
 
@@ -57,77 +59,20 @@ async def create_run(
     user: CurrentUser,
     db: DbSession,
 ):
-    targets = payload.targets
-    try:
-        from anomaly_core.models import Scope
-        from sqlalchemy.orm import selectinload
+    targets = list(payload.targets or [])
+    eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
+    await enforce_assessment_policy(db, user, engagement, targets, scope_engagement=eng_loaded)
 
-        res = await db.execute(
-            select(Engagement)
-            .options(selectinload(Engagement.scope).selectinload(Scope.entries))
-            .where(Engagement.id == engagement.id)
-        )
-        eng_loaded = res.scalar_one()
-    except Exception:
-        eng_loaded = engagement
-
-    decision = evaluate_assessment_request(engagement, targets, scope_engagement=eng_loaded)
-    if not decision.allowed:
-        await AuditService.log(
-            actor_id=user.id,
-            action="policy.denied",
-            resource_type="engagement",
-            resource_id=engagement.id,
-            engagement_id=engagement.id,
-            organization_id=getattr(engagement, "organization_id", None),
-            metadata=decision.metadata,
-            db=db,
-        )
-        await db.commit()
-        detail = (
-            "Engagement not approved for assessment"
-            if decision.reason == "engagement_not_approved"
-            else "Requested targets are out of scope"
-        )
-        raise HTTPException(status_code=403, detail=detail)
-
-    run_params = dict(payload.params or {})
-    run_params["targets"] = targets  # scope-checked targets must not be overridden
-    run = Run(
-        organization_id=getattr(engagement, "organization_id", None),
-        engagement_id=engagement.id,
-        user_id=user.id,
-        tool=payload.tool,
-        status=RunStatus.queued,
-        scope_warning=False,
-        params=run_params,
-    )
-    db.add(run)
-    await db.flush()
-    manifest = build_execution_manifest(
-        run_id=run.id,
+    run = await enqueue_assessment_run(
+        db,
+        user=user,
         engagement=engagement,
         tool=payload.tool,
         targets=targets,
-        params={k: v for k, v in run_params.items() if k != "targets"},
-        policy_decision={"allowed": True, "reason": None},
+        params=dict(payload.params or {}),
     )
-    run.params = {**run_params, "execution_manifest": manifest.to_dict()}
-    org_id = getattr(engagement, "organization_id", None)
-    await AuditService.log(
-        actor_id=user.id,
-        action="run.enqueue",
-        resource_type="run",
-        resource_id=run.id,
-        engagement_id=engagement.id,
-        organization_id=org_id,
-        metadata={"tool": run.tool, "targets": targets, "manifest_ref": str(run.id)},
-        db=db,
-    )
-    await db.commit()
-    await db.refresh(run)
 
-    if os.environ.get("RUNNER_MODE") == "inline" or os.environ.get("ANOMALY_INLINE_RUNS") == "1":
+    if inline_execution_enabled():
         try:
             from anomaly_worker.executor import execute_run
 

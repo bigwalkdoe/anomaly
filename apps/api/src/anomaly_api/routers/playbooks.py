@@ -7,14 +7,18 @@ from uuid import UUID
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
 from anomaly_core.execution import build_execution_manifest
-from anomaly_core.models import Engagement, Playbook, PlaybookStep, RoleName, Run, RunStatus, Scope
-from anomaly_core.policy import evaluate_assessment_request
+from anomaly_core.models import Engagement, Playbook, PlaybookStep, RoleName, Run, RunStatus
 from anomaly_core.runner import FakeRunner
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from anomaly_api.assessment import (
+    enforce_assessment_policy,
+    inline_execution_enabled,
+    load_engagement_with_scope,
+)
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 
 router = APIRouter(prefix="/api", tags=["playbooks"])
@@ -208,35 +212,8 @@ async def execute_playbook(
         targets = []
     targets = [str(t) for t in targets]
 
-    try:
-        res = await db.execute(
-            select(Engagement)
-            .options(selectinload(Engagement.scope).selectinload(Scope.entries))
-            .where(Engagement.id == engagement.id)
-        )
-        eng_loaded = res.scalar_one()
-    except Exception:
-        eng_loaded = engagement
-
-    decision = evaluate_assessment_request(engagement, targets, scope_engagement=eng_loaded)
-    if not decision.allowed:
-        await AuditService.log(
-            actor_id=user.id,
-            action="policy.denied",
-            resource_type="engagement",
-            resource_id=engagement.id,
-            engagement_id=engagement.id,
-            organization_id=getattr(engagement, "organization_id", None),
-            metadata=decision.metadata,
-            db=db,
-        )
-        await db.commit()
-        detail = (
-            "Engagement not approved for assessment"
-            if decision.reason == "engagement_not_approved"
-            else "Requested targets are out of scope"
-        )
-        raise HTTPException(status_code=403, detail=detail)
+    eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
+    await enforce_assessment_policy(db, user, engagement, targets, scope_engagement=eng_loaded)
 
     org_id = getattr(engagement, "organization_id", None)
     runs_created = 0
@@ -295,9 +272,7 @@ async def execute_playbook(
     await db.commit()
 
     # Execute runs inline if configured
-    import os
-
-    if os.environ.get("RUNNER_MODE") == "inline" or os.environ.get("ANOMALY_INLINE_RUNS") == "1":
+    if inline_execution_enabled():
         from anomaly_worker.executor import execute_run
 
         async with SessionLocal() as db2:
