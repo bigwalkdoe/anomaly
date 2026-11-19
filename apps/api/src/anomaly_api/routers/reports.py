@@ -11,6 +11,7 @@ from anomaly_core.models import (
     Report,
     ReportFormat,
     ReportStatus,
+    RoleName,
     Run,
 )
 from anomaly_core.rbac import engagement_accessible
@@ -97,8 +98,12 @@ async def generate_report(
     engagement = await db.get(Engagement, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
+    # Hide existence from non-members/cross-tenant callers.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
         raise HTTPException(status_code=404, detail="Engagement not found")
+    # Report generation persists artifacts and is restricted to pentester+.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     findings = (
         await db.scalars(select(Finding).where(Finding.engagement_id == engagement_id))
