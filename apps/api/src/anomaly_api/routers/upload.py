@@ -8,7 +8,7 @@ from pathlib import PurePosixPath
 from typing import Annotated
 
 from anomaly_core.audit import AuditService
-from anomaly_core.models import Engagement, Evidence, EvidenceType
+from anomaly_core.models import Engagement, Evidence, EvidenceType, RoleName
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from minio import Minio
 from pydantic import BaseModel
@@ -44,7 +44,9 @@ def get_minio_client() -> Minio:
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_file(
-    engagement: Annotated[Engagement, Depends(require_engagement_access("engagement_id"))],
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     file: Annotated[UploadFile, File(...)],
     user: CurrentUser,
     db: DbSession,

@@ -78,7 +78,8 @@ async def test_pentester_can_access_assigned_engagements_only(client, db_session
     resp1 = await client.get(f"/api/engagements/{eng1.id}", headers=_auth(pentester))
     assert resp1.status_code == 200
     resp2 = await client.get(f"/api/engagements/{eng2.id}", headers=_auth(pentester))
-    assert resp2.status_code == 403
+    # Non-member access must not leak engagement existence.
+    assert resp2.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -136,11 +137,11 @@ async def test_unassigned_user_gets_403_on_engagement_endpoints(client, db_sessi
     await db_session.commit()
 
     resp = await client.get(f"/api/engagements/{eng.id}", headers=_auth(other))
-    assert resp.status_code == 403
+    assert resp.status_code == 404
     resp_runs = await client.get(f"/api/engagements/{eng.id}/runs", headers=_auth(other))
-    assert resp_runs.status_code == 403
+    assert resp_runs.status_code == 404
     resp_findings = await client.get(f"/api/engagements/{eng.id}/findings", headers=_auth(other))
-    assert resp_findings.status_code == 403
+    assert resp_findings.status_code == 404
 
 
 @pytest.mark.asyncio

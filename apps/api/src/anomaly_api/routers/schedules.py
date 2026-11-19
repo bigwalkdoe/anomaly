@@ -3,13 +3,12 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from anomaly_core.models import CronSchedule, Engagement
-from anomaly_core.rbac import engagement_accessible
+from anomaly_core.models import CronSchedule, Engagement, RoleName
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
+from anomaly_api.deps import DbSession, require_engagement_access
 
 router = APIRouter(prefix="/api", tags=["schedules"])
 
@@ -65,18 +64,14 @@ async def list_schedules(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_schedule(
-    engagement_id: UUID,
     payload: CronScheduleCreate,
-    user: CurrentUser,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     db: DbSession,
 ):
-    engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
-        raise HTTPException(status_code=404, detail="Forbidden")
     schedule = CronSchedule(
-        engagement_id=engagement_id,
+        engagement_id=engagement.id,
         cron_expression=payload.cron_expression,
         tool=payload.tool,
         targets=payload.targets,
@@ -102,19 +97,15 @@ async def create_schedule(
     "/engagements/{engagement_id}/schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def delete_schedule(
-    engagement_id: UUID,
     schedule_id: UUID,
-    user: CurrentUser,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
+    ],
     db: DbSession,
 ):
-    engagement = await db.get(Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if not await engagement_accessible(db, user, engagement):
-        raise HTTPException(status_code=404, detail="Forbidden")
     result = await db.execute(
         select(CronSchedule).where(
-            CronSchedule.id == schedule_id, CronSchedule.engagement_id == engagement_id
+            CronSchedule.id == schedule_id, CronSchedule.engagement_id == engagement.id
         )
     )
     schedule = result.scalar_one_or_none()

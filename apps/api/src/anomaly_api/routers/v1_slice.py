@@ -156,6 +156,10 @@ class V1RunCreate(BaseModel):
     params: dict = {}
 
 
+class V1ReportGenerateRequest(BaseModel):
+    format: str = "markdown"
+
+
 @router.post("/engagements/{engagement_id}/runs", status_code=status.HTTP_202_ACCEPTED)
 async def v1_create_run(
     request: Request,
@@ -351,13 +355,12 @@ async def v1_get_report(request: Request, report_id: UUID, user: CurrentUser, db
     )
 
 
-@router.get("/engagements/{engagement_id}/reports/generate")
-async def v1_generate_report(
+async def _generate_report_for_engagement(
     request: Request,
     engagement_id: UUID,
     user: CurrentUser,
     db: DbSession,
-    format: str = "markdown",
+    format: str,
 ):
     from anomaly_core.models import Evidence, Finding
     from anomaly_core.rbac import engagement_accessible
@@ -458,3 +461,43 @@ async def v1_generate_report(
         "traceability": context,
     }
     return _envelope(request, data)
+
+
+@router.get("/engagements/{engagement_id}/reports/generate")
+async def v1_generate_report(
+    request: Request,
+    engagement_id: UUID,
+    user: CurrentUser,
+    db: DbSession,
+    format: str = "markdown",
+):
+    return await _generate_report_for_engagement(
+        request=request,
+        engagement_id=engagement_id,
+        user=user,
+        db=db,
+        format=format,
+    )
+
+
+@router.post("/engagements/{engagement_id}/reports")
+async def v1_create_report(
+    request: Request,
+    engagement_id: UUID,
+    user: CurrentUser,
+    db: DbSession,
+    payload: V1ReportGenerateRequest | None = None,
+    format: str | None = None,
+):
+    fmt = (
+        payload.format
+        if payload is not None and getattr(payload, "format", None)
+        else (format or "markdown")
+    )
+    return await _generate_report_for_engagement(
+        request=request,
+        engagement_id=engagement_id,
+        user=user,
+        db=db,
+        format=fmt,
+    )

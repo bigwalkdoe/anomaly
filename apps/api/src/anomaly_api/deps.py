@@ -110,8 +110,15 @@ def require_engagement_access(
         engagement = await db.get(Engagement, engagement_uuid)
         if engagement is None:
             raise HTTPException(status_code=404, detail="Engagement not found")
+
+        # Avoid leaking engagement existence across tenants/non-members.
+        if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+            raise HTTPException(status_code=404, detail="Engagement not found")
+
+        # Known/accessible engagement but insufficient role for this operation.
         if not await engagement_accessible(db, user, engagement, min_role=min_role):
             raise HTTPException(status_code=403, detail="Forbidden")
+
         return engagement
 
     return dependency

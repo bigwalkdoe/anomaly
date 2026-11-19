@@ -1,6 +1,6 @@
 # Anomaly Task List
 
-_Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, and validation pass)_
+_Last updated: 2026-11-19 (tenant/enforcement hardening, schedules/upload RBAC, v1 report endpoint alignment, targeted validation)_
 
 ## P0 — Correctness, security, and release blockers
 
@@ -47,10 +47,13 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 
 - [ ] **Implement first production-grade vertical slice with tests** *(in progress — tenancy propagation and API wiring started)*
   - **Progress (2026-11-10):** added tenancy foundations (B-003/B-004): `Organization`/`OrganizationMember` models, `packages/core/src/anomaly_core/tenancy.py`, and additive `organization_id` propagation to `engagements`, `runs`, `findings`, `evidence`, `reports`, `audit_logs`, `approvals` (+ `approvals.engagement_id`) with migrations `ab12cd34ef56` and `cd34ef56ab78` (head `cd34ef56ab78`, `alembic check` clean). Wired `organization_id` through engagement create/response and audit logging (`AuditService.log`), and propagated org context to run creation/audit records; targeted API/CLI/AI tests passing.
+  - **Progress (2026-11-19):** aligned v1 slice report generation contract additively — `apps/api/src/anomaly_api/routers/v1_slice.py` now shares report-generation implementation for `GET /api/v1/engagements/{id}/reports/generate` (preserved) and `POST /api/v1/engagements/{id}/reports` (accepts body/query `format`, default `markdown`). Targeted lint checks passed.
   - **Remaining:** server-side org context/enforcement across all API/services/WS/exports (cross-tenant tests), approvals + policy decision service/hooks, policy-gated scope-validated isolated execution manifests/containment, findings normalization linkage, evidence integrity/provenance (checksums, immutable metadata), traceable reporting, and required security tests (cross-tenant, runner/scope bypass, AI execution-policy bypass, evidence/report traceability).
 
 - [ ] **Introduce tenant model & enforcement (Organization/Workspace)**
   - Additive schema/domain changes; enforce tenant context server-side across API/WS/exports/workers.
+  - **Progress (2026-11-19):** hardened engagement access semantics to avoid existence leakage in `apps/api/src/anomaly_api/deps.py` (`require_engagement_access`: 404 for non-viewer/non-member/cross-tenant, 403 only for known members with insufficient role). Aligned schedules routes (`apps/api/src/anomaly_api/routers/schedules.py`) to no-leak 404s and enforced `pentester` role for schedule create/delete (list remains viewer-accessible). Updated `tests/api/test_rbac.py` expectations for non-member/unassigned access. Verified: `python3 -m pytest tests/api/test_rbac.py::test_client_viewer_no_runs_and_no_create tests/api/test_rbac.py::test_pentester_can_access_assigned_engagements_only tests/api/test_rbac.py::test_unassigned_user_gets_403_on_engagement_endpoints -q` (3 passed), `python3 -m pytest tests/api/test_tenancy_isolation.py::test_cross_tenant_authorization_regression -q` (1 passed), `python3 -m pytest tests/api/test_schedules.py -q` (1 passed), and `ruff check` on touched files.
+  - **Remaining (tomorrow):** continue auditing all remaining mutation/read surfaces for consistent min-role + no-leak enforcement (legacy report generation permissions, evidence/report/export/admin/aggregate/WS/worker paths as applicable), extend cross-tenant tests for any newly hardened surfaces, and centralize/align assessment-request policy gate + enqueue flow across `runs.py`, `v1_slice.py`, and `playbooks.py` (including worker/scheduler re-validation before execution). Re-run broader DB-backed/API subsets and CI-runner checks when environment is stable.
 
 - [ ] **Harden execution, evidence, and reporting foundations**
   - Policy-before-execution, runner containment/limits, evidence checksums/provenance, and org/engagement/job/execution-traceable reports.
@@ -68,6 +71,7 @@ _Last updated: 2026-11-10 (post crash-recovery, AI/UI/CLI/docs, gap analysis, an
 - [ ] **Review API/browser security posture** *(in progress)*
   - **Progress (2026-11-16):** made CORS environment-specific (`ANOMALY_CORS_ORIGINS`/`CORS_ALLOW_ORIGINS`, credentials disabled for wildcard), hardened upload handling (filename sanitization, configurable max size), removed duplicate no-op logout route and fixed `/api/auth/verify` to require/validate Bearer tokens; reviewed WS/upload/export surfaces (WS run/notification endpoints authenticate tokens and enforce access checks; upload requires engagement access; no dedicated export endpoints found). Auth uses Bearer tokens (not cookies), so CSRF exposure is currently limited.
   - **Progress (2026-11-17):** hardened webhook stub (`/api/webhooks` admin-only; create returns 501 not implemented) and added configurable metrics protection (`ANOMALY_METRICS_AUTH_REQUIRED` requires authenticated admin when enabled; default unchanged).
+  - **Progress (2026-11-19):** tightened evidence upload authorization — `POST /api/upload/engagements/{id}` now requires `pentester` engagement role (`apps/api/src/anomaly_api/routers/upload.py`), in addition to prior filename/size hardening.
   - **Remaining:** add/validate security headers and session/cookie hardening if cookies are introduced, confirm WS origin/proxy/logging posture for token-in-query, and expand automated checks for WS/upload/auth edge cases in CI-like environments.
 
 - [x] **Migration/tooling hygiene** *(partial)*
