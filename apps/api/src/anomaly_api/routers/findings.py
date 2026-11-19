@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from anomaly_core.audit import AuditService
 from anomaly_core.models import Engagement, Finding, FindingSeverity, FindingStatus, RoleName
-from anomaly_core.rbac import engagement_accessible, get_membership, has_role
+from anomaly_core.rbac import engagement_accessible
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -69,15 +69,6 @@ async def create_finding(
     db: DbSession,
     user: CurrentUser,
 ):
-    membership = await get_membership(db, user, engagement)
-    if (
-        membership is not None
-        and membership.role == RoleName.client_viewer
-        and not has_role(user, RoleName.admin)
-    ):
-        raise HTTPException(status_code=403, detail="Forbidden")
-    if has_role(user, RoleName.client_viewer) and not has_role(user, RoleName.admin):
-        raise HTTPException(status_code=403, detail="Forbidden")
     finding = Finding(
         organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
