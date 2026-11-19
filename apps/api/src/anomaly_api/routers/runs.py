@@ -98,6 +98,10 @@ async def get_run(run_id: str, user: CurrentUser, db: DbSession):
         raise HTTPException(status_code=404, detail="Run not found")
     from anomaly_core.rbac import engagement_accessible
 
-    if not await engagement_accessible(db, user, engagement):
+    # Hide existence from non-members/cross-tenant callers.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
         raise HTTPException(status_code=404, detail="Run not found")
+    # Runs are not readable by client_viewer members.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
+        raise HTTPException(status_code=403, detail="Forbidden")
     return RunResponse.model_validate(run)

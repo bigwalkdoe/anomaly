@@ -4,7 +4,7 @@ import uuid
 from uuid import UUID
 
 from anomaly_core.db import SessionLocal
-from anomaly_core.models import Engagement, Run, User
+from anomaly_core.models import Engagement, RoleName, Run, User
 from anomaly_core.rbac import engagement_accessible
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
@@ -131,8 +131,14 @@ async def run_ws_status(run_id: str, user: CurrentUser, db: DbSession):
     if run is None:
         return {"active": False, "connection_count": 0}
     engagement = await db.get(Engagement, run.engagement_id)
-    if engagement is None or not await engagement_accessible(db, user, engagement):
+    if engagement is None:
         raise HTTPException(status_code=404, detail="Run not found")
+    # Hide existence from non-members/cross-tenant callers.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+        raise HTTPException(status_code=404, detail="Run not found")
+    # Runs are not readable by client_viewer members.
+    if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
+        raise HTTPException(status_code=403, detail="Forbidden")
     active = run_id in manager.active_connections and len(manager.active_connections[run_id]) > 0
     return {"active": active, "connection_count": len(manager.active_connections.get(run_id, []))}
 
