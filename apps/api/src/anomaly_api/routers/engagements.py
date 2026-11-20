@@ -16,6 +16,7 @@ from anomaly_core.models import (
     Target,
     TargetType,
 )
+from anomaly_core.rbac import engagement_accessible
 from anomaly_core.tenancy import get_or_create_default_organization, get_user_memberships
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -106,24 +107,47 @@ async def update_engagement(
     db: DbSession,
 ):
     update_data = payload.model_dump(exclude_unset=True)
+    status_changed_to_approved = False
+
     if "name" in update_data:
         engagement.name = update_data["name"]
     if "status" in update_data:
-        engagement.status = EngagementStatus(update_data["status"])
+        new_status = EngagementStatus(update_data["status"])
+        if new_status == EngagementStatus.approved:
+            # Governed approval must be admin-authorized and audited with approver metadata.
+            if not await engagement_accessible(db, user, engagement, min_role=RoleName.admin):
+                raise HTTPException(status_code=403, detail="Forbidden")
+            if engagement.status not in (
+                EngagementStatus.pending_approval,
+                EngagementStatus.draft,
+                EngagementStatus.approved,
+            ):
+                raise HTTPException(status_code=409, detail="Engagement not in approvable state")
+            engagement.status = EngagementStatus.approved
+            engagement.approved_by = user.id
+            engagement.approved_at = datetime.now(UTC)
+            status_changed_to_approved = True
+        else:
+            engagement.status = new_status
     if "mode" in update_data:
         engagement.mode = EngagementMode(update_data["mode"])
     if "client_name" in update_data:
         engagement.client_name = update_data["client_name"]
     if "rules_of_engagement" in update_data:
         engagement.rules_of_engagement = update_data["rules_of_engagement"]
+
+    action = "engagement.approve" if status_changed_to_approved else "engagement.update"
+    audit_metadata = dict(update_data)
+    if status_changed_to_approved:
+        audit_metadata.update({"approver_id": str(user.id), "status": engagement.status.value})
     await AuditService.log(
         actor_id=user.id,
-        action="engagement.update",
+        action=action,
         resource_type="engagement",
         resource_id=engagement.id,
         engagement_id=engagement.id,
         organization_id=getattr(engagement, "organization_id", None),
-        metadata=update_data,
+        metadata=audit_metadata,
         db=db,
     )
     await db.commit()
