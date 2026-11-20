@@ -462,3 +462,54 @@ async def test_cross_tenant_playbook_isolation(client, db_session):
         json={"targets": ["example.com"]},
     )
     assert r.status_code in (403, 404)
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_v1_governed_actions_isolation(client, db_session):
+    """V1 approve and run creation must not leak or allow cross-tenant access."""
+    from anomaly_core.models import Scope, ScopeEntry, ScopeEntryKind
+
+    admin_a = await _seed(db_session, "v1-gov-a@example.com", RoleName.admin)
+    admin_b = await _seed(db_session, "v1-gov-b@example.com", RoleName.admin)
+
+    org_a = Organization(name="V1 Gov Org A", slug="v1-gov-org-a")
+    org_b = Organization(name="V1 Gov Org B", slug="v1-gov-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"))
+
+    eng_b = Engagement(
+        name="V1 Gov Eng B",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_b.id,
+        organization_id=org_b.id,
+    )
+    db_session.add(eng_b)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng_b.id, user_id=admin_b.id, role=RoleName.admin)
+    )
+    scope_b = Scope(engagement_id=eng_b.id)
+    db_session.add(scope_b)
+    await db_session.flush()
+    db_session.add(
+        ScopeEntry(scope_id=scope_b.id, kind=ScopeEntryKind.in_, target_value="in.scope.test")
+    )
+    await db_session.commit()
+
+    headers_a = {
+        "Authorization": f"Bearer {create_access_token(admin_a.id, [RoleName.admin.value])}"
+    }
+
+    # Cross-tenant v1 approve must not leak existence.
+    r = await client.post(f"/api/v1/engagements/{eng_b.id}/approve", headers=headers_a)
+    assert r.status_code in (403, 404)
+
+    # Cross-tenant v1 run creation must not leak existence or enqueue.
+    r = await client.post(
+        f"/api/v1/engagements/{eng_b.id}/runs",
+        headers=headers_a,
+        json={"tool": "stub", "targets": ["in.scope.test"], "params": {}},
+    )
+    assert r.status_code in (403, 404)
