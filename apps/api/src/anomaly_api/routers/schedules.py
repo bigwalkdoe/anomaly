@@ -3,12 +3,13 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
+from anomaly_core.audit import AuditService
 from anomaly_core.models import CronSchedule, Engagement, RoleName
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from anomaly_api.deps import DbSession, require_engagement_access
+from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 
 router = APIRouter(prefix="/api", tags=["schedules"])
 
@@ -68,6 +69,7 @@ async def create_schedule(
     engagement: Annotated[
         Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
     ],
+    user: CurrentUser,
     db: DbSession,
 ):
     schedule = CronSchedule(
@@ -79,6 +81,22 @@ async def create_schedule(
         is_active=payload.is_active,
     )
     db.add(schedule)
+    await db.flush()
+    await AuditService.log(
+        actor_id=user.id,
+        action="schedule.create",
+        resource_type="schedule",
+        resource_id=schedule.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={
+            "tool": schedule.tool,
+            "cron_expression": schedule.cron_expression,
+            "target_count": len(schedule.targets or []),
+            "is_active": schedule.is_active,
+        },
+        db=db,
+    )
     await db.commit()
     await db.refresh(schedule)
     return CronScheduleResponse(
@@ -101,6 +119,7 @@ async def delete_schedule(
     engagement: Annotated[
         Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
     ],
+    user: CurrentUser,
     db: DbSession,
 ):
     result = await db.execute(
@@ -111,6 +130,19 @@ async def delete_schedule(
     schedule = result.scalar_one_or_none()
     if schedule is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
+    await AuditService.log(
+        actor_id=user.id,
+        action="schedule.delete",
+        resource_type="schedule",
+        resource_id=schedule.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={
+            "tool": schedule.tool,
+            "cron_expression": schedule.cron_expression,
+        },
+        db=db,
+    )
     await db.delete(schedule)
     await db.commit()
     return None

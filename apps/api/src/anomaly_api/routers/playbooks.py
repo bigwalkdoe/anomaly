@@ -4,6 +4,7 @@ import contextlib
 from typing import Annotated
 from uuid import UUID
 
+from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
 from anomaly_core.models import Engagement, Playbook, PlaybookStep, RoleName
 from anomaly_core.runner import FakeRunner
@@ -115,6 +116,16 @@ async def create_playbook(
             order=step_data.order,
         )
         db.add(step)
+    await AuditService.log(
+        actor_id=user.id,
+        action="playbook.create",
+        resource_type="playbook",
+        resource_id=playbook.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={"name": playbook.name, "step_count": len(payload.steps)},
+        db=db,
+    )
     await db.commit()
     await db.refresh(playbook)
     result = await db.execute(
@@ -148,6 +159,7 @@ async def update_playbook(
     engagement: Annotated[
         Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
     ],
+    user: CurrentUser,
     db: DbSession,
 ):
     result = await db.execute(
@@ -161,6 +173,16 @@ async def update_playbook(
         playbook.name = update_data["name"]
     if "description" in update_data:
         playbook.description = update_data["description"]
+    await AuditService.log(
+        actor_id=user.id,
+        action="playbook.update",
+        resource_type="playbook",
+        resource_id=playbook.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata=update_data,
+        db=db,
+    )
     await db.commit()
     await db.refresh(playbook)
     return PlaybookResponse.model_validate(playbook)
@@ -174,12 +196,23 @@ async def delete_playbook(
     engagement: Annotated[
         Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
     ],
+    user: CurrentUser,
     db: DbSession,
 ):
     result = await db.execute(select(Playbook).where(Playbook.id == playbook_id))
     playbook = result.scalar_one_or_none()
     if playbook is None or playbook.engagement_id != engagement.id:
         raise HTTPException(status_code=404, detail="Playbook not found")
+    await AuditService.log(
+        actor_id=user.id,
+        action="playbook.delete",
+        resource_type="playbook",
+        resource_id=playbook.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={"name": playbook.name},
+        db=db,
+    )
     await db.delete(playbook)
     await db.commit()
     return None
@@ -213,6 +246,16 @@ async def execute_playbook(
 
     eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
     await enforce_assessment_policy(db, user, engagement, targets, scope_engagement=eng_loaded)
+    await AuditService.log(
+        actor_id=user.id,
+        action="playbook.execute",
+        resource_type="playbook",
+        resource_id=playbook.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={"tool_count": len(playbook.steps), "target_count": len(targets)},
+        db=db,
+    )
 
     runs_created = 0
     runner = FakeRunner()
