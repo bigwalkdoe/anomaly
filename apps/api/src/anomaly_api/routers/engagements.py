@@ -160,6 +160,7 @@ async def update_scope(
     engagement: Annotated[
         Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
     ],
+    user: CurrentUser,
     db: DbSession,
 ):
     scope = engagement.scope
@@ -175,6 +176,21 @@ async def update_scope(
         kind = ScopeEntryKind.in_ if e.kind == "in" else ScopeEntryKind.out
         entry = ScopeEntry(scope_id=scope.id, kind=kind, target_value=e.target_value)
         db.add(entry)
+    await AuditService.log(
+        actor_id=user.id,
+        action="engagement.scope.update",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={
+            "entry_count": len(payload.entries),
+            "entries": [
+                {"kind": e.kind, "target_value": e.target_value} for e in payload.entries
+            ],
+        },
+        db=db,
+    )
     await db.commit()
     return {"status": "ok"}
 
