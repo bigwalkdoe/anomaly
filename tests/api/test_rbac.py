@@ -329,3 +329,92 @@ async def test_require_permission_dependency(db_session):
     with pytest.raises(HTTPException) as exc_info:
         await dep(user=viewer)
     assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_client_viewer_cannot_manage_playbooks_or_schedules(client, db_session):
+    from anomaly_core.models import CronSchedule, Playbook
+
+    owner = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.admin),
+        "owner-pb-sched@example.com",
+        "Owner",
+    )
+    viewer = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.client_viewer),
+        "viewer-pb-sched@example.com",
+        "Viewer",
+    )
+    eng = Engagement(name="E1", mode=EngagementMode.client, owner_id=owner.id)
+    db_session.add(eng)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng.id, user_id=viewer.id, role=RoleName.client_viewer)
+    )
+    playbook = Playbook(engagement_id=eng.id, name="PB", description="")
+    schedule = CronSchedule(
+        engagement_id=eng.id,
+        cron_expression="0 * * * *",
+        tool="nmap",
+        targets=[],
+        params={},
+        is_active=True,
+    )
+    db_session.add_all([playbook, schedule])
+    await db_session.commit()
+
+    headers = {
+        "Authorization": f"Bearer {create_access_token(viewer.id, [RoleName.client_viewer.value])}"
+    }
+
+    # Read/list allowed for engagement-scoped resources where viewer access is permitted.
+    resp = await client.get(f"/api/engagements/{eng.id}/playbooks", headers=headers)
+    assert resp.status_code == 200
+    resp = await client.get(
+        f"/api/engagements/{eng.id}/playbooks/{playbook.id}", headers=headers
+    )
+    assert resp.status_code == 200
+    resp = await client.get(f"/api/engagements/{eng.id}/schedules", headers=headers)
+    assert resp.status_code == 200
+
+    # Mutations/execution require pentester+.
+    resp = await client.post(
+        f"/api/engagements/{eng.id}/playbooks",
+        headers=headers,
+        json={"name": "x", "description": "", "steps": []},
+    )
+    assert resp.status_code == 403
+
+    resp = await client.post(
+        f"/api/engagements/{eng.id}/playbooks/{playbook.id}/execute",
+        headers=headers,
+        json={"targets": ["in.scope.test"]},
+    )
+    assert resp.status_code == 403
+
+    resp = await client.delete(
+        f"/api/engagements/{eng.id}/playbooks/{playbook.id}",
+        headers=headers,
+    )
+    assert resp.status_code == 403
+
+    resp = await client.post(
+        f"/api/engagements/{eng.id}/schedules",
+        headers=headers,
+        json={
+            "cron_expression": "0 1 * * *",
+            "tool": "nmap",
+            "targets": [],
+            "params": {},
+            "is_active": True,
+        },
+    )
+    assert resp.status_code == 403
+
+    resp = await client.delete(
+        f"/api/engagements/{eng.id}/schedules/{schedule.id}",
+        headers=headers,
+    )
+    assert resp.status_code == 403
