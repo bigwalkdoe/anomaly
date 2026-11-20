@@ -418,3 +418,68 @@ async def test_client_viewer_cannot_manage_playbooks_or_schedules(client, db_ses
         headers=headers,
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_engagement_submit_and_approve_role_enforcement(client, db_session):
+    owner = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.admin),
+        "owner-submit-approve@example.com",
+        "Owner",
+    )
+    pentester = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.pentester),
+        "pentester-submit-approve@example.com",
+        "Pentester",
+    )
+    viewer = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.client_viewer),
+        "viewer-submit-approve@example.com",
+        "Viewer",
+    )
+    eng = Engagement(name="E1", mode=EngagementMode.client, owner_id=owner.id)
+    db_session.add(eng)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng.id, user_id=pentester.id, role=RoleName.pentester)
+    )
+    db_session.add(
+        EngagementMember(engagement_id=eng.id, user_id=viewer.id, role=RoleName.client_viewer)
+    )
+    await db_session.commit()
+
+    owner_headers = {
+        "Authorization": f"Bearer {create_access_token(owner.id, [RoleName.admin.value])}"
+    }
+    pentester_headers = {
+        "Authorization": f"Bearer {create_access_token(pentester.id, [RoleName.pentester.value])}"
+    }
+    viewer_headers = {
+        "Authorization": f"Bearer {create_access_token(viewer.id, [RoleName.client_viewer.value])}"
+    }
+
+    # Viewer cannot submit or approve.
+    assert (
+        await client.post(f"/api/engagements/{eng.id}/submit", headers=viewer_headers)
+    ).status_code == 403
+    assert (
+        await client.post(f"/api/engagements/{eng.id}/approve", headers=viewer_headers)
+    ).status_code == 403
+
+    # Pentester can submit but cannot approve.
+    resp = await client.post(f"/api/engagements/{eng.id}/submit", headers=pentester_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "pending_approval"
+
+    resp = await client.post(f"/api/engagements/{eng.id}/approve", headers=pentester_headers)
+    assert resp.status_code == 403
+
+    # Admin can approve.
+    resp = await client.post(f"/api/engagements/{eng.id}/approve", headers=owner_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "approved"
+    assert body.get("approved_by") == str(owner.id)
