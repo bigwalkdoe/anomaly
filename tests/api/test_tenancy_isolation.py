@@ -151,15 +151,28 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     # Reports: cannot generate/access other tenant's engagement report
     r = await client.get(f"/api/reports/engagements/{eng_b.id}/generate", headers=headers_a)
     assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/v1/engagements/{eng_b.id}/reports",
+        headers=headers_a,
+        json={"format": "markdown"},
+    )
+    assert r.status_code in (403, 404)
+    r = await client.get(f"/api/v1/engagements/{eng_b.id}/reports", headers=headers_a)
+    assert r.status_code in (403, 404)
 
-    # Evidence: cannot list or download other tenant's evidence
+    # Evidence: cannot list or download/access other tenant's evidence
     r = await client.get("/api/evidence", headers=headers_a)
     assert r.status_code == 200
     evidence_ids = [e["id"] for e in r.json()]
     assert str(evidence_b.id) not in evidence_ids
 
-    r = await client.get(f"/api/evidence/{evidence_b.id}/download", headers=headers_a)
-    assert r.status_code in (403, 404)
+    for path in (
+        f"/api/evidence/{evidence_b.id}/download",
+        f"/api/evidence/{evidence_b.id}/file",
+        f"/api/evidence/{evidence_b.id}/integrity",
+    ):
+        r = await client.get(path, headers=headers_a)
+        assert r.status_code in (403, 404), path
 
     # WS run status: existing inaccessible run must not leak existence
     r = await client.get(f"/api/ws/runs/{run_b.id}/status", headers=headers_a)

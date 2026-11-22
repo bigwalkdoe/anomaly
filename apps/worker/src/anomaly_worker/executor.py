@@ -27,6 +27,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 RISKY_PARAM_KEYS = {"allow_risky_options", "allow_risky", "risk", "level"}
+MAX_TARGETS_PER_RUN = 256
+MAX_EVIDENCE_TEXT_BYTES = 256 * 1024
+DEFAULT_RUN_TIMEOUT_S = 300
+DEFAULT_RESOURCE_LIMITS = {"mem_limit": "512m", "pids_limit": 256}
 
 
 def _targets_from_run(run: Run) -> list[str]:
@@ -70,6 +74,26 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         engagement = await db.get(Engagement, run.engagement_id)
 
     targets = _targets_from_run(run)
+    if len(targets) > MAX_TARGETS_PER_RUN:
+        run.status = RunStatus.failed
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="policy.denied",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(run, "organization_id", None),
+            metadata={
+                "reason": "too_many_targets",
+                "target_count": len(targets),
+                "max_targets": MAX_TARGETS_PER_RUN,
+                "op": "assessment.execute",
+            },
+            db=db,
+        )
+        await db.commit()
+        await db.refresh(run)
+        return run
     if engagement is None:
         run.status = RunStatus.failed
         await AuditService.log(
@@ -212,6 +236,8 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         target_values=targets,
         params=tool_params,
         command=command,
+        timeout_s=DEFAULT_RUN_TIMEOUT_S,
+        resource_limits=dict(DEFAULT_RESOURCE_LIMITS),
     )
     runner_result = await runner.run(run_spec)
 
@@ -219,6 +245,12 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
     stderr = getattr(runner_result, "stderr", "") or ""
     log_bytes = (stdout + "\n" + stderr).encode("utf-8", errors="replace")
     sha = hashlib.sha256(log_bytes).hexdigest()
+    stdout_stored = stdout.encode("utf-8", errors="replace")[:MAX_EVIDENCE_TEXT_BYTES].decode(
+        "utf-8", errors="replace"
+    )
+    stderr_stored = stderr.encode("utf-8", errors="replace")[:MAX_EVIDENCE_TEXT_BYTES].decode(
+        "utf-8", errors="replace"
+    )
     org_id = getattr(engagement, "organization_id", None) if engagement is not None else None
     ev = Evidence(
         run_id=run.id,
@@ -231,8 +263,12 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         tool=run.tool,
         tool_version=getattr(runner_result, "tool_version", None),
         metadata={
-            "stdout": stdout,
-            "stderr": stderr,
+            "stdout": stdout_stored,
+            "stderr": stderr_stored,
+            "stdout_truncated": len(stdout.encode("utf-8", errors="replace"))
+            > MAX_EVIDENCE_TEXT_BYTES,
+            "stderr_truncated": len(stderr.encode("utf-8", errors="replace"))
+            > MAX_EVIDENCE_TEXT_BYTES,
             "exit_code": getattr(runner_result, "exit_code", 0),
             "sha256": sha,
             "organization_id": str(org_id) if org_id else None,
