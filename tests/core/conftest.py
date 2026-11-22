@@ -34,6 +34,7 @@ async def reset_db():
             "api_keys",
             "playbook_steps",
             "playbooks",
+            "cron_schedules",
             "tags",
             "targets",
             "scope_entries",

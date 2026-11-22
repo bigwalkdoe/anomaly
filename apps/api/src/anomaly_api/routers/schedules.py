@@ -5,6 +5,7 @@ from uuid import UUID
 
 from anomaly_core.audit import AuditService
 from anomaly_core.models import CronSchedule, Engagement, RoleName
+from anomaly_core.scheduler import compute_next_run_at
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -72,6 +73,12 @@ async def create_schedule(
     user: CurrentUser,
     db: DbSession,
 ):
+    next_run_at = None
+    if payload.is_active:
+        try:
+            next_run_at = compute_next_run_at(payload.cron_expression)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid cron_expression") from exc
     schedule = CronSchedule(
         engagement_id=engagement.id,
         cron_expression=payload.cron_expression,
@@ -79,6 +86,7 @@ async def create_schedule(
         targets=payload.targets,
         params=payload.params,
         is_active=payload.is_active,
+        next_run_at=next_run_at,
     )
     db.add(schedule)
     await db.flush()
