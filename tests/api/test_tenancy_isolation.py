@@ -605,6 +605,16 @@ async def test_cross_tenant_aggregate_endpoints_do_not_leak(client, db_session):
             metadata={"name": "Agg Eng B SECRET"},
         )
     )
+    db_session.add(
+        AuditLog(
+            organization_id=None,
+            action="system.secret",
+            resource_type="system",
+            resource_id=eng_b.id,
+            actor_id=admin_b.id,
+            metadata={"secret": "NULL-ORG-B"},
+        )
+    )
     await db_session.commit()
 
     headers_a = {
@@ -641,3 +651,5 @@ async def test_cross_tenant_aggregate_endpoints_do_not_leak(client, db_session):
     actions = r.json()
     assert all(a.get("engagement_id") != str(eng_b.id) for a in actions)
     assert all("SECRET" not in str(a) for a in actions)
+    assert all("NULL-ORG-B" not in str(a) for a in actions)
+    assert all(a.get("action") != "system.secret" for a in actions)

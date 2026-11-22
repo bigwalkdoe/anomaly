@@ -7,7 +7,7 @@ from anomaly_core.audit import get_audit_log
 from anomaly_core.models import AuditLog, Engagement, Membership, RoleName
 from anomaly_core.rbac import engagement_accessible, has_role
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from anomaly_api.deps import CurrentUser, DbSession
 
@@ -41,10 +41,15 @@ async def list_audit(
         stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)
         if org_ids:
             stmt = stmt.where(
-                or_(AuditLog.organization_id.in_(org_ids), AuditLog.organization_id.is_(None))
+                or_(
+                    AuditLog.organization_id.in_(org_ids),
+                    and_(AuditLog.organization_id.is_(None), AuditLog.actor_id == user.id),
+                )
             )
         else:
-            stmt = stmt.where(AuditLog.organization_id.is_(None))
+            stmt = stmt.where(
+                and_(AuditLog.organization_id.is_(None), AuditLog.actor_id == user.id)
+            )
         logs = (await db.scalars(stmt)).all()
     return [
         {
