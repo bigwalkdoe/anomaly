@@ -557,3 +557,68 @@ async def test_non_admin_cannot_access_admin_only_global_endpoints(client, db_se
     assert (
         await client.post("/api/webhooks", headers=headers, json={"url": "https://example.com"})
     ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_upload_requires_pentester_and_hides_cross_tenant(client, db_session, monkeypatch):
+    from anomaly_core.models import Membership, Organization
+
+    class _FakeMinio:
+        def bucket_exists(self, *_args, **_kwargs):
+            return True
+
+        def make_bucket(self, *_args, **_kwargs):
+            return None
+
+        def put_object(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr("anomaly_api.routers.upload.get_minio_client", lambda: _FakeMinio())
+
+    owner = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "up-owner@example.com", "Owner"
+    )
+    viewer = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.client_viewer),
+        "up-viewer@example.com",
+        "Viewer",
+    )
+    outsider = await _make_user(
+        db_session, await _get_role(db_session, RoleName.admin), "up-outsider@example.com", "Out"
+    )
+    org_a = Organization(name="Upload Org A", slug="upload-org-a")
+    org_b = Organization(name="Upload Org B", slug="upload-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=owner.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=viewer.id, organization_id=org_a.id, role="member"))
+    db_session.add(Membership(user_id=outsider.id, organization_id=org_b.id, role="owner"))
+
+    eng = Engagement(
+        name="UploadEng", mode=EngagementMode.own_infra, owner_id=owner.id, organization_id=org_a.id
+    )
+    db_session.add(eng)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng.id, user_id=viewer.id, role=RoleName.client_viewer)
+    )
+    await db_session.commit()
+
+    viewer_headers = {
+        "Authorization": f"Bearer {create_access_token(viewer.id, [RoleName.client_viewer.value])}"
+    }
+    outsider_headers = {
+        "Authorization": f"Bearer {create_access_token(outsider.id, [RoleName.admin.value])}"
+    }
+    files = {"file": ("evidence.txt", b"hello", "text/plain")}
+
+    r = await client.post(
+        f"/api/upload/engagements/{eng.id}", headers=viewer_headers, files=files
+    )
+    assert r.status_code == 403
+
+    r = await client.post(
+        f"/api/upload/engagements/{eng.id}", headers=outsider_headers, files=files
+    )
+    assert r.status_code in (403, 404)
