@@ -41,6 +41,7 @@ async def test_create_and_list_schedules(client, db_session):
     assert body["cron_expression"] == "0 2 * * *"
     assert body["tool"] == "nmap"
     assert body["targets"] == ["example.com"]
+    assert body["next_run_at"] is not None
 
     resp2 = await client.get(
         f"/api/engagements/{eng.id}/schedules",
@@ -48,3 +49,32 @@ async def test_create_and_list_schedules(client, db_session):
     )
     assert resp2.status_code == 200
     assert len(resp2.json()) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_schedule_rejects_invalid_cron(client, db_session):
+    admin_role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
+    if admin_role is None:
+        admin_role = Role(name=RoleName.admin, description="admin")
+        db_session.add(admin_role)
+        await db_session.flush()
+    owner = User(
+        email="owner-cron@example.com",
+        name="Owner",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
+    db_session.add(owner)
+    await db_session.flush()
+    eng = Engagement(name="E2", mode=EngagementMode.own_infra, owner_id=owner.id)
+    db_session.add(eng)
+    await db_session.commit()
+
+    token = create_access_token(owner.id, ["admin"])
+    resp = await client.post(
+        f"/api/engagements/{eng.id}/schedules",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"cron_expression": "not-a-cron", "tool": "nmap", "targets": ["example.com"]},
+    )
+    assert resp.status_code == 400
+    assert "cron_expression" in str(resp.json()).lower()
