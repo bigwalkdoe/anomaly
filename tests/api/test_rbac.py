@@ -524,3 +524,36 @@ async def test_client_viewer_cannot_modify_engagement_scope_or_targets(client, d
         json={"value": "example.com", "type": "domain"},
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_access_admin_only_global_endpoints(client, db_session):
+    viewer = await _make_user(
+        db_session,
+        await _get_role(db_session, RoleName.client_viewer),
+        "viewer-admin-edges@example.com",
+        "Viewer",
+    )
+    await db_session.commit()
+    headers = {
+        "Authorization": f"Bearer {create_access_token(viewer.id, [RoleName.client_viewer.value])}"
+    }
+
+    # Global admin-only surfaces
+    assert (await client.get("/api/users", headers=headers)).status_code == 403
+    assert (await client.get("/api/audit", headers=headers)).status_code == 403
+    assert (await client.get("/api/tags", headers=headers)).status_code == 403
+    assert (
+        await client.post("/api/tags", headers=headers, json={"name": "x", "color": "#000"})
+    ).status_code == 403
+    assert (
+        await client.post(
+            "/api/notifications/broadcast",
+            headers=headers,
+            json={"title": "t", "message": "m"},
+        )
+    ).status_code == 403
+    assert (await client.get("/api/webhooks", headers=headers)).status_code == 403
+    assert (
+        await client.post("/api/webhooks", headers=headers, json={"url": "https://example.com"})
+    ).status_code == 403

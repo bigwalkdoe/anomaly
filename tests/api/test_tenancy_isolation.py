@@ -513,3 +513,118 @@ async def test_cross_tenant_v1_governed_actions_isolation(client, db_session):
         json={"tool": "stub", "targets": ["in.scope.test"], "params": {}},
     )
     assert r.status_code in (403, 404)
+
+
+@pytest.mark.asyncio
+async def test_cross_tenant_aggregate_endpoints_do_not_leak(client, db_session):
+    """Aggregate/read endpoints must not include other tenants' data."""
+    from anomaly_core.models import (
+        AuditLog,
+        EngagementStatus,
+        Finding,
+        FindingSeverity,
+        FindingStatus,
+        Run,
+        RunStatus,
+    )
+
+    admin_a = await _seed(db_session, "agg-admin-a@example.com", RoleName.admin)
+    admin_b = await _seed(db_session, "agg-admin-b@example.com", RoleName.admin)
+
+    org_a = Organization(name="Agg Org A", slug="agg-org-a")
+    org_b = Organization(name="Agg Org B", slug="agg-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"))
+
+    eng_a = Engagement(
+        name="Agg Eng A",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_a.id,
+        organization_id=org_a.id,
+        status=EngagementStatus.active,
+    )
+    eng_b = Engagement(
+        name="Agg Eng B SECRET",
+        mode=EngagementMode.own_infra,
+        owner_id=admin_b.id,
+        organization_id=org_b.id,
+        status=EngagementStatus.active,
+    )
+    db_session.add_all([eng_a, eng_b])
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=eng_a.id, user_id=admin_a.id, role=RoleName.admin)
+    )
+    db_session.add(
+        EngagementMember(engagement_id=eng_b.id, user_id=admin_b.id, role=RoleName.admin)
+    )
+
+    db_session.add(
+        Finding(
+            organization_id=org_b.id,
+            engagement_id=eng_b.id,
+            title="SECRET-FINDING-B",
+            severity=FindingSeverity.critical,
+            status=FindingStatus.new,
+            description="",
+            fingerprint="agg-fp-b",
+            reporter_id=admin_b.id,
+        )
+    )
+    db_session.add(
+        Run(
+            organization_id=org_b.id,
+            engagement_id=eng_b.id,
+            tool="nmap",
+            status=RunStatus.succeeded,
+            user_id=admin_b.id,
+        )
+    )
+    db_session.add(
+        AuditLog(
+            organization_id=org_b.id,
+            engagement_id=eng_b.id,
+            action="engagement.create",
+            resource_type="engagement",
+            resource_id=eng_b.id,
+            metadata={"name": "Agg Eng B SECRET"},
+        )
+    )
+    await db_session.commit()
+
+    headers_a = {
+        "Authorization": f"Bearer {create_access_token(admin_a.id, [RoleName.admin.value])}"
+    }
+
+    # Dashboard/stats aggregates must not count other tenant data.
+    for path in ("/api/dashboard", "/api/stats", "/api/vulnerabilities/summary"):
+        r = await client.get(path, headers=headers_a)
+        assert r.status_code == 200, path
+        body = r.json()
+        text = str(body)
+        assert "SECRET" not in text
+        if path == "/api/dashboard":
+            assert body["overview"]["engagements"] == 1
+            assert body["overview"]["findings"] == 0
+            assert body["overview"]["runs"] == 0
+        if path == "/api/stats":
+            assert body == {"engagements": 1, "findings": 0, "runs": 0}
+        if path == "/api/vulnerabilities/summary":
+            assert body["total"] == 0
+            assert body["critical"] == 0
+
+    # Search must not return other tenant's engagements/findings.
+    r = await client.get("/api/search?q=SECRET", headers=headers_a)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["engagements"] == []
+    assert body["findings"] == []
+
+    # Global audit list must not leak other tenant's audit logs.
+    r = await client.get("/api/audit", headers=headers_a)
+    assert r.status_code == 200
+    actions = r.json()
+    assert all(a.get("engagement_id") != str(eng_b.id) for a in actions)
+    assert all("SECRET" not in str(a) for a in actions)

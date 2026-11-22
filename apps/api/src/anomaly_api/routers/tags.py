@@ -12,6 +12,8 @@ router = APIRouter(prefix="/api/tags", tags=["tags"])
 
 @router.get("")
 async def list_tags(user: CurrentUser, db: DbSession):
+    if not has_role(user, RoleName.admin):
+        raise HTTPException(status_code=403, detail="Forbidden")
     tags = (await db.scalars(select(Tag))).all()
     return [{"id": str(t.id), "name": t.name, "color": t.color} for t in tags]
 
