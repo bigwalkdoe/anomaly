@@ -148,8 +148,10 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     token_a = create_access_token(admin_a.id, [RoleName.admin.value])
     headers_a = {"Authorization": f"Bearer {token_a}"}
 
-    # Reports: cannot generate/access other tenant's engagement report
+    # Reports: cannot generate/list/access other tenant's engagement report
     r = await client.get(f"/api/reports/engagements/{eng_b.id}/generate", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.get(f"/api/reports/engagements/{eng_b.id}", headers=headers_a)
     assert r.status_code in (403, 404)
     r = await client.post(
         f"/api/v1/engagements/{eng_b.id}/reports",
