@@ -32,6 +32,13 @@ MAX_TARGETS_PER_RUN = 256
 MAX_EVIDENCE_TEXT_BYTES = 256 * 1024
 DEFAULT_RUN_TIMEOUT_S = 300
 DEFAULT_RESOURCE_LIMITS = {"mem_limit": "512m", "pids_limit": 256}
+TOOL_RESOURCE_PROFILES: dict[str, dict[str, Any]] = {
+    "nmap": {"mem_limit": "512m", "pids_limit": 256, "cpu_quota": 100000},
+    "masscan": {"mem_limit": "512m", "pids_limit": 256, "cpu_quota": 100000},
+    "nuclei": {"mem_limit": "768m", "pids_limit": 512, "cpu_quota": 100000},
+    "sqlmap": {"mem_limit": "512m", "pids_limit": 256, "cpu_quota": 100000},
+    "ffuf": {"mem_limit": "512m", "pids_limit": 512, "cpu_quota": 100000},
+}
 
 
 def _targets_from_run(run: Run) -> list[str]:
@@ -231,6 +238,8 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         except Exception:
             command = None
 
+    resource_limits = dict(DEFAULT_RESOURCE_LIMITS)
+    resource_limits.update(TOOL_RESOURCE_PROFILES.get(run.tool, {}))
     run_spec = RunSpec(
         tool=run.tool,
         image=tool_image,
@@ -238,7 +247,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         params=tool_params,
         command=command,
         timeout_s=DEFAULT_RUN_TIMEOUT_S,
-        resource_limits=dict(DEFAULT_RESOURCE_LIMITS),
+        resource_limits=resource_limits,
     )
     try:
         runner_result = await asyncio.wait_for(
