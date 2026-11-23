@@ -30,6 +30,7 @@ from sqlalchemy.orm import selectinload
 RISKY_PARAM_KEYS = {"allow_risky_options", "allow_risky", "risk", "level"}
 MAX_TARGETS_PER_RUN = 256
 MAX_EVIDENCE_TEXT_BYTES = 256 * 1024
+MAX_ARTIFACTS_PER_RUN = 100
 DEFAULT_RUN_TIMEOUT_S = 300
 DEFAULT_RESOURCE_LIMITS = {"mem_limit": "512m", "pids_limit": 256}
 TOOL_RESOURCE_PROFILES: dict[str, dict[str, Any]] = {
@@ -268,6 +269,20 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
 
     stdout = getattr(runner_result, "stdout", "") or ""
     stderr = getattr(runner_result, "stderr", "") or ""
+    artifacts = list(getattr(runner_result, "artifacts", []) or [])
+    artifacts_truncated = len(artifacts) > MAX_ARTIFACTS_PER_RUN
+    if artifacts_truncated:
+        artifacts = artifacts[:MAX_ARTIFACTS_PER_RUN]
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="artifact.quota_exceeded",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
+            metadata={"max_artifacts": MAX_ARTIFACTS_PER_RUN, "tool": run.tool},
+            db=db,
+        )
     log_bytes = (stdout + "\n" + stderr).encode("utf-8", errors="replace")
     sha = hashlib.sha256(log_bytes).hexdigest()
     stdout_stored = stdout.encode("utf-8", errors="replace")[:MAX_EVIDENCE_TEXT_BYTES].decode(
@@ -296,6 +311,8 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             > MAX_EVIDENCE_TEXT_BYTES,
             "exit_code": getattr(runner_result, "exit_code", 0),
             "sha256": sha,
+            "artifact_count": len(artifacts),
+            "artifacts_truncated": artifacts_truncated,
             "organization_id": str(org_id) if org_id else None,
             "engagement_id": str(run.engagement_id),
             "run_id": str(run.id),
