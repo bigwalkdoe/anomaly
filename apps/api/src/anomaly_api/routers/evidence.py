@@ -158,6 +158,17 @@ async def get_evidence_integrity(evidence_id: UUID, user: CurrentUser, db: DbSes
         else:
             verification = "computed"
 
+    await AuditService.log(
+        actor_id=user.id,
+        action="evidence.integrity_check",
+        resource_type="evidence",
+        resource_id=evidence.id,
+        engagement_id=engagement_id,
+        organization_id=getattr(engagement, "organization_id", None) if engagement else None,
+        metadata={"verification": verification, "recorded": recorded is not None},
+        db=db,
+    )
+    await db.commit()
     return {
         "id": str(evidence.id),
         "sha256": recorded,
