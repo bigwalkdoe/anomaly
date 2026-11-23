@@ -229,6 +229,12 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
         f"/api/engagements/{eng_b.id}/playbooks/{playbook_b.id}", headers=headers_a
     )
     assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_b.id}/playbooks",
+        headers=headers_a,
+        json={"name": "x", "description": "x", "steps": []},
+    )
+    assert r.status_code in (403, 404)
 
     # Schedules (engagement-scoped) must not leak across tenants
     from anomaly_core.models import CronSchedule
@@ -246,6 +252,17 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     await db_session.refresh(schedule_b)
 
     r = await client.get(f"/api/engagements/{eng_b.id}/schedules", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_b.id}/schedules",
+        headers=headers_a,
+        json={
+            "cron_expression": "0 * * * *",
+            "tool": "nmap",
+            "targets": ["10.0.0.1"],
+            "params": {},
+        },
+    )
     assert r.status_code in (403, 404)
     r = await client.delete(
         f"/api/engagements/{eng_b.id}/schedules/{schedule_b.id}", headers=headers_a
@@ -483,11 +500,29 @@ async def test_cross_tenant_playbook_isolation(client, db_session):
         json={"targets": ["example.com"]},
     )
     assert r.status_code in (403, 404)
+    r = await client.patch(
+        f"/api/engagements/{eng_b.id}/playbooks/{pb_b.id}",
+        headers=headers_a,
+        json={"name": "hijacked"},
+    )
+    assert r.status_code in (403, 404)
     r = await client.delete(f"/api/engagements/{eng_b.id}/playbooks/{pb_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_b.id}/playbooks",
+        headers=headers_a,
+        json={"name": "x", "description": "x", "steps": []},
+    )
     assert r.status_code in (403, 404)
 
     # Cannot confuse binding by using own engagement path with foreign playbook id
     r = await client.get(f"/api/engagements/{eng_a.id}/playbooks/{pb_b.id}", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.patch(
+        f"/api/engagements/{eng_a.id}/playbooks/{pb_b.id}",
+        headers=headers_a,
+        json={"name": "hijacked"},
+    )
     assert r.status_code in (403, 404)
     r = await client.post(
         f"/api/engagements/{eng_a.id}/playbooks/{pb_b.id}/execute",
