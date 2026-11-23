@@ -276,6 +276,24 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     r = await client.delete(f"/api/findings/{finding_b.id}", headers=headers_a)
     assert r.status_code in (403, 404)
 
+    # Engagement-scoped finding/run list/create must not leak across tenants
+    r = await client.get(f"/api/engagements/{eng_b.id}/findings", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_b.id}/findings",
+        headers=headers_a,
+        json={"title": "x", "severity": "low", "description": "x"},
+    )
+    assert r.status_code in (403, 404)
+    r = await client.get(f"/api/engagements/{eng_b.id}/runs", headers=headers_a)
+    assert r.status_code in (403, 404)
+    r = await client.post(
+        f"/api/engagements/{eng_b.id}/runs",
+        headers=headers_a,
+        json={"tool": "stub", "targets": ["in.scope.test"], "params": {}},
+    )
+    assert r.status_code in (403, 404)
+
     r = await client.get("/api/stats", headers=headers_a)
     assert r.status_code == 200
     stats = r.json()
