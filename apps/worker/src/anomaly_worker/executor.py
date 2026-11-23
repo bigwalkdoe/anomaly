@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 from typing import Any
 from uuid import UUID
 
@@ -19,7 +20,7 @@ from anomaly_core.models import (
     Target,
 )
 from anomaly_core.policy import evaluate_assessment_request
-from anomaly_core.runner import FakeRunner, RunResult, RunSpec
+from anomaly_core.runner import DockerRunner, FakeRunner, RunResult, RunSpec
 from anomaly_tools import ToolSpec as AnomalyToolSpec
 from anomaly_tools import get_default_registry
 from anomaly_tools.stub import stub_tool
@@ -221,7 +222,8 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         )
 
     if runner is None:
-        runner = FakeRunner()
+        runner_mode = os.environ.get("ANOMALY_RUNNER", "fake").lower()
+        runner = DockerRunner() if runner_mode == "docker" else FakeRunner()
 
     registry = get_default_registry()
     tool = registry.get(run.tool)
