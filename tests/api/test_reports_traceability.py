@@ -71,6 +71,18 @@ async def test_legacy_report_generate_includes_traceability(client, db_session):
     assert trace.get("report_sha256")
     assert body["report_id"]
 
+    list_resp = await client.get(f"/api/reports/engagements/{eng.id}", headers=headers)
+    assert list_resp.status_code == 200
+    listed = list_resp.json()
+    assert any(r["id"] == body["report_id"] for r in listed)
+
+    from anomaly_core.models import AuditLog
+
+    audit_rows = (
+        await db_session.scalars(select(AuditLog).where(AuditLog.action == "report.list"))
+    ).all()
+    assert any(str(r.engagement_id) == str(eng.id) for r in audit_rows)
+
 
 @pytest.mark.asyncio
 async def test_v1_report_generate_includes_traceability(client, db_session):
@@ -90,3 +102,8 @@ async def test_v1_report_generate_includes_traceability(client, db_session):
     assert str(ev.id) in trace.get("evidence_ids", [])
     assert "b" * 64 in trace.get("evidence_sha256", [])
     assert trace.get("report_sha256")
+
+    list_resp = await client.get(f"/api/v1/engagements/{eng.id}/reports", headers=headers)
+    assert list_resp.status_code == 200
+    listed = list_resp.json()["data"]
+    assert any(r["id"] == data["report_id"] for r in listed)
