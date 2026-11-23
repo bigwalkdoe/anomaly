@@ -131,3 +131,17 @@ async def test_docker_runner_timeout_kills_and_returns_124():
     assert container.killed is True
     assert container.removed is True
     assert "timed out" in res.stderr.lower()
+
+
+@pytest.mark.asyncio
+async def test_docker_runner_caps_large_output():
+    from anomaly_core.runner import MAX_RUNNER_OUTPUT_BYTES
+
+    big = b"A" * (MAX_RUNNER_OUTPUT_BYTES + 100)
+    container = _FakeContainer(status_code=0, stdout=big, stderr=b"")
+    runner = DockerRunner(client=_FakeDockerClient(container))
+    spec = RunSpec(tool="nmap", image="anomaly-runner:dev", command=["echo", "hi"], timeout_s=5)
+    res = await runner.run(spec)
+    assert res.exit_code == 0
+    assert "[output truncated]" in res.stdout
+    assert len(res.stdout.encode("utf-8")) <= MAX_RUNNER_OUTPUT_BYTES + 64

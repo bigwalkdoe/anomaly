@@ -41,6 +41,9 @@ class FakeRunner:
         return self.result
 
 
+MAX_RUNNER_OUTPUT_BYTES = 1024 * 1024
+
+
 class DockerRunner:
     def __init__(self, client: Any = None, network: str | None = None) -> None:
         try:
@@ -68,6 +71,12 @@ class DockerRunner:
         def _run_sync() -> RunResult:
             import contextlib
 
+            def _cap(b: bytes) -> str:
+                if len(b) > MAX_RUNNER_OUTPUT_BYTES:
+                    b = b[:MAX_RUNNER_OUTPUT_BYTES]
+                    return b.decode("utf-8", errors="replace") + "\n[output truncated]"
+                return b.decode("utf-8", errors="replace")
+
             started = time.monotonic()
             container = None
             try:
@@ -88,8 +97,8 @@ class DockerRunner:
                     timeout_msg = "\nExecution timed out"
                     return RunResult(
                         exit_code=124,
-                        stdout=stdout.decode("utf-8", errors="replace"),
-                        stderr=(stderr.decode("utf-8", errors="replace") + timeout_msg).strip(),
+                        stdout=_cap(stdout),
+                        stderr=(_cap(stderr) + timeout_msg).strip(),
                         artifacts=[],
                         duration_s=duration,
                     )
@@ -109,8 +118,8 @@ class DockerRunner:
                 duration = time.monotonic() - started
                 return RunResult(
                     exit_code=status_code,
-                    stdout=stdout.decode("utf-8", errors="replace"),
-                    stderr=stderr.decode("utf-8", errors="replace"),
+                    stdout=_cap(stdout),
+                    stderr=_cap(stderr),
                     artifacts=[],
                     duration_s=duration,
                 )
