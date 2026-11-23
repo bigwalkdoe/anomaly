@@ -136,6 +136,9 @@ async def dispatch_due_schedules(
         try:
             if schedule.next_run_at is None:
                 schedule.next_run_at = compute_next_run_at(schedule.cron_expression, base=now)
+                schedule.last_dispatch_at = now
+                schedule.last_dispatch_status = "initialized"
+                schedule.last_error = None
                 await db.commit()
                 if schedule.next_run_at > now:
                     results.append(
@@ -154,6 +157,10 @@ async def dispatch_due_schedules(
             engagement, actor = await _load_schedule_context(db, schedule)
             if engagement is None:
                 schedule.is_active = False
+                schedule.last_dispatch_at = now
+                schedule.last_dispatch_status = "failed"
+                schedule.last_error = "engagement_not_found"
+                schedule.dispatch_count = int(schedule.dispatch_count or 0) + 1
                 await AuditService.log(
                     actor_id=getattr(actor, "id", None),
                     action="schedule.dispatch_failed",
@@ -175,6 +182,10 @@ async def dispatch_due_schedules(
 
             if actor is None:
                 schedule.is_active = False
+                schedule.last_dispatch_at = now
+                schedule.last_dispatch_status = "failed"
+                schedule.last_error = "owner_not_found"
+                schedule.dispatch_count = int(schedule.dispatch_count or 0) + 1
                 await AuditService.log(
                     actor_id=None,
                     action="schedule.dispatch_failed",
@@ -213,6 +224,10 @@ async def dispatch_due_schedules(
                     db=db,
                 )
                 schedule.next_run_at = compute_next_run_at(schedule.cron_expression, base=now)
+                schedule.last_dispatch_at = now
+                schedule.last_dispatch_status = "denied"
+                schedule.last_error = decision.reason
+                schedule.dispatch_count = int(schedule.dispatch_count or 0) + 1
                 await AuditService.log(
                     actor_id=actor.id,
                     action="schedule.dispatch_denied",
@@ -247,6 +262,10 @@ async def dispatch_due_schedules(
             )
 
             schedule.next_run_at = compute_next_run_at(schedule.cron_expression, base=now)
+            schedule.last_dispatch_at = now
+            schedule.last_dispatch_status = "dispatched"
+            schedule.last_error = None
+            schedule.dispatch_count = int(schedule.dispatch_count or 0) + 1
             await AuditService.log(
                 actor_id=actor.id,
                 action="schedule.dispatch",
@@ -273,11 +292,22 @@ async def dispatch_due_schedules(
             )
         except Exception as exc:
             await db.rollback()
+            reason = f"error:{exc.__class__.__name__}"
+            try:
+                fresh = await db.get(CronSchedule, schedule.id)
+                if fresh is not None:
+                    fresh.last_dispatch_at = now
+                    fresh.last_dispatch_status = "failed"
+                    fresh.last_error = reason[:1024]
+                    fresh.dispatch_count = int(fresh.dispatch_count or 0) + 1
+                    await db.commit()
+            except Exception:
+                await db.rollback()
             results.append(
                 ScheduleDispatchResult(
                     schedule_id=schedule.id,
                     status="failed",
-                    reason=f"error:{exc.__class__.__name__}",
+                    reason=reason,
                 )
             )
 

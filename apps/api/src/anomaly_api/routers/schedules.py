@@ -32,6 +32,10 @@ class CronScheduleResponse(BaseModel):
     params: dict
     is_active: bool
     next_run_at: str | None = None
+    last_dispatch_at: str | None = None
+    last_dispatch_status: str | None = None
+    last_error: str | None = None
+    dispatch_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -55,6 +59,12 @@ async def list_schedules(
             params=s.params,
             is_active=s.is_active,
             next_run_at=s.next_run_at.isoformat() if s.next_run_at else None,
+            last_dispatch_at=(
+                s.last_dispatch_at.isoformat() if s.last_dispatch_at else None
+            ),
+            last_dispatch_status=s.last_dispatch_status,
+            last_error=s.last_error,
+            dispatch_count=int(s.dispatch_count or 0),
         )
         for s in schedules
     ]
@@ -116,6 +126,12 @@ async def create_schedule(
         params=schedule.params,
         is_active=schedule.is_active,
         next_run_at=schedule.next_run_at.isoformat() if schedule.next_run_at else None,
+        last_dispatch_at=(
+            schedule.last_dispatch_at.isoformat() if schedule.last_dispatch_at else None
+        ),
+        last_dispatch_status=schedule.last_dispatch_status,
+        last_error=schedule.last_error,
+        dispatch_count=int(schedule.dispatch_count or 0),
     )
 
 

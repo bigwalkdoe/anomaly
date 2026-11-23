@@ -95,6 +95,10 @@ async def test_dispatch_due_schedule_enqueues_run_and_advances(db_session):
     await db_session.refresh(sched)
     assert sched.next_run_at is not None
     assert sched.next_run_at > now
+    assert sched.last_dispatch_status == "dispatched"
+    assert sched.last_error is None
+    assert sched.last_dispatch_at is not None
+    assert int(sched.dispatch_count or 0) == 1
 
     audit_actions = (
         await db_session.scalars(select(AuditLog.action).where(AuditLog.engagement_id == eng.id))
@@ -132,6 +136,10 @@ async def test_dispatch_policy_denied_skips_and_advances(db_session):
     await db_session.refresh(sched)
     assert sched.is_active is True
     assert sched.next_run_at is not None and sched.next_run_at > now
+    assert sched.last_dispatch_status == "denied"
+    assert sched.last_error
+    assert sched.last_dispatch_at is not None
+    assert int(sched.dispatch_count or 0) == 1
 
     actions = (
         await db_session.scalars(select(AuditLog.action).where(AuditLog.engagement_id == eng.id))
@@ -175,6 +183,8 @@ async def test_dispatch_initializes_null_next_run_and_not_due_is_ignored(db_sess
     await db_session.refresh(sched_null)
     assert sched_null.next_run_at is not None
     assert sched_null.next_run_at > now
+    assert sched_null.last_dispatch_status == "initialized"
+    assert sched_null.last_dispatch_at is not None
 
     runs = (await db_session.scalars(select(Run))).all()
     assert runs == []
