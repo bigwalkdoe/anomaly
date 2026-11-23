@@ -243,6 +243,18 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
 
     resource_limits = dict(DEFAULT_RESOURCE_LIMITS)
     resource_limits.update(TOOL_RESOURCE_PROFILES.get(run.tool, {}))
+    network = os.environ.get("ANOMALY_RUNNER_NETWORK", "none").strip() or "none"
+    if network != "none":
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="runner.network_override",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
+            metadata={"tool": run.tool, "network": network},
+            db=db,
+        )
     run_spec = RunSpec(
         tool=run.tool,
         image=tool_image,
@@ -250,7 +262,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         params=tool_params,
         command=command,
         timeout_s=DEFAULT_RUN_TIMEOUT_S,
-        network="none",
+        network=network,
         resource_limits=resource_limits,
     )
     try:
@@ -272,6 +284,18 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
 
     stdout = getattr(runner_result, "stdout", "") or ""
     stderr = getattr(runner_result, "stderr", "") or ""
+    exit_code = getattr(runner_result, "exit_code", 0)
+    if exit_code == 125:
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="runner.execution_error",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
+            metadata={"tool": run.tool, "exit_code": exit_code, "stderr": stderr[:500]},
+            db=db,
+        )
     artifacts = list(getattr(runner_result, "artifacts", []) or [])
     artifacts_truncated = len(artifacts) > MAX_ARTIFACTS_PER_RUN
     if artifacts_truncated:

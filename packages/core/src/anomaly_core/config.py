@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     ai_anthropic_model: str = "claude-3-5-sonnet"
     ai_anthropic_base_url: str = "https://api.anthropic.com/v1"
     ai_request_timeout_s: int = 60
+    evidence_retention_days: int = 0
+    report_retention_days: int = 0
 
 
 _settings: Settings | None = None
