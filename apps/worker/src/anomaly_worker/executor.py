@@ -248,6 +248,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         params=tool_params,
         command=command,
         timeout_s=DEFAULT_RUN_TIMEOUT_S,
+        network="none",
         resource_limits=resource_limits,
     )
     try:
