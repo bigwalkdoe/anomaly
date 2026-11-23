@@ -266,3 +266,27 @@ async def test_execute_run_marks_timeout_as_failed_and_audits(db_session, monkey
     ).all()
     timeout_audits = [a for a in audit_rows if a.action == "run.timeout"]
     assert timeout_audits, "expected run.timeout audit event"
+
+
+@pytest.mark.asyncio
+async def test_execute_run_uses_docker_runner_when_env_selected(db_session, monkeypatch):
+    _org, _engagement, run = await _setup_run(
+        db_session, targets=["example.com"], scope_entries=["example.com"]
+    )
+    seen = {}
+
+    class _StubDockerRunner:
+        specs = []
+
+        async def run(self, spec):
+            self.specs.append(spec)
+            seen["used"] = True
+            return RunResult(exit_code=0, stdout="ok", stderr="")
+
+    monkeypatch.setenv("ANOMALY_RUNNER", "docker")
+    monkeypatch.setattr("anomaly_worker.executor.DockerRunner", _StubDockerRunner)
+
+    result = await execute_run(db_session, run.id, runner=None)
+
+    assert result.status == RunStatus.succeeded
+    assert seen.get("used") is True
