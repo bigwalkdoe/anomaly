@@ -26,108 +26,161 @@ def _add_enum_values(enum_name: str, values: list[str]) -> None:
         op.execute(f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}'")
 
 
+def _has_table(bind, name: str) -> bool:
+    return sa.inspect(bind).has_table(name)
+
+
+def _has_column(bind, table: str, column: str) -> bool:
+    if not _has_table(bind, table):
+        return False
+    return any(c["name"] == column for c in sa.inspect(bind).get_columns(table))
+
+
+def _has_index(bind, table: str, name: str) -> bool:
+    if not _has_table(bind, table):
+        return False
+    return any(i["name"] == name for i in sa.inspect(bind).get_indexes(table))
+
+
+def _has_fk(bind, table: str, name: str) -> bool:
+    if not _has_table(bind, table):
+        return False
+    return any(fk.get("name") == name for fk in sa.inspect(bind).get_foreign_keys(table))
+
+
 def upgrade() -> None:
     """Upgrade schema."""
+    bind = op.get_bind()
     # Tenancy tables
-    op.create_table(
-        "organizations",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("slug", sa.String(length=255), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("slug"),
-    )
-    op.create_index(
-        op.f("ix_organizations_created_at"), "organizations", ["created_at"], unique=False
-    )
-    op.create_index(op.f("ix_organizations_slug"), "organizations", ["slug"], unique=True)
+    if not _has_table(bind, "organizations"):
+        op.create_table(
+            "organizations",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("name", sa.String(length=255), nullable=False),
+            sa.Column("slug", sa.String(length=255), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("slug"),
+        )
+    if not _has_index(bind, "organizations", op.f("ix_organizations_created_at")):
+        op.create_index(
+            op.f("ix_organizations_created_at"), "organizations", ["created_at"], unique=False
+        )
+    if not _has_index(bind, "organizations", op.f("ix_organizations_slug")):
+        op.create_index(op.f("ix_organizations_slug"), "organizations", ["slug"], unique=True)
 
-    op.create_table(
-        "workspaces",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("organization_id", sa.UUID(), nullable=False),
-        sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("slug", sa.String(length=255), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("organization_id", "slug", name="uq_workspace_org_slug"),
-    )
-    op.create_index(op.f("ix_workspaces_created_at"), "workspaces", ["created_at"], unique=False)
-    op.create_index(
-        op.f("ix_workspaces_organization_id"), "workspaces", ["organization_id"], unique=False
-    )
-    op.create_index(op.f("ix_workspaces_slug"), "workspaces", ["slug"], unique=False)
+    if not _has_table(bind, "workspaces"):
+        op.create_table(
+            "workspaces",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("organization_id", sa.UUID(), nullable=False),
+            sa.Column("name", sa.String(length=255), nullable=False),
+            sa.Column("slug", sa.String(length=255), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("organization_id", "slug", name="uq_workspace_org_slug"),
+        )
+    if not _has_index(bind, "workspaces", op.f("ix_workspaces_created_at")):
+        op.create_index(
+            op.f("ix_workspaces_created_at"), "workspaces", ["created_at"], unique=False
+        )
+    if not _has_index(bind, "workspaces", op.f("ix_workspaces_organization_id")):
+        op.create_index(
+            op.f("ix_workspaces_organization_id"), "workspaces", ["organization_id"], unique=False
+        )
+    if not _has_index(bind, "workspaces", op.f("ix_workspaces_slug")):
+        op.create_index(op.f("ix_workspaces_slug"), "workspaces", ["slug"], unique=False)
 
-    op.create_table(
-        "memberships",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("user_id", sa.UUID(), nullable=False),
-        sa.Column("organization_id", sa.UUID(), nullable=False),
-        sa.Column("workspace_id", sa.UUID(), nullable=True),
-        sa.Column("role", sa.String(length=50), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "user_id", "organization_id", "workspace_id", name="uq_membership_user_org_ws"
-        ),
-    )
-    op.create_index(op.f("ix_memberships_created_at"), "memberships", ["created_at"], unique=False)
-    op.create_index(
-        op.f("ix_memberships_organization_id"), "memberships", ["organization_id"], unique=False
-    )
-    op.create_index(op.f("ix_memberships_role"), "memberships", ["role"], unique=False)
-    op.create_index(op.f("ix_memberships_user_id"), "memberships", ["user_id"], unique=False)
-    op.create_index(
-        op.f("ix_memberships_workspace_id"), "memberships", ["workspace_id"], unique=False
-    )
+    if not _has_table(bind, "memberships"):
+        op.create_table(
+            "memberships",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("user_id", sa.UUID(), nullable=False),
+            sa.Column("organization_id", sa.UUID(), nullable=False),
+            sa.Column("workspace_id", sa.UUID(), nullable=True),
+            sa.Column("role", sa.String(length=50), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint(
+                "user_id", "organization_id", "workspace_id", name="uq_membership_user_org_ws"
+            ),
+        )
+    if not _has_index(bind, "memberships", op.f("ix_memberships_created_at")):
+        op.create_index(
+            op.f("ix_memberships_created_at"), "memberships", ["created_at"], unique=False
+        )
+    if not _has_index(bind, "memberships", op.f("ix_memberships_organization_id")):
+        op.create_index(
+            op.f("ix_memberships_organization_id"), "memberships", ["organization_id"], unique=False
+        )
+    if not _has_index(bind, "memberships", op.f("ix_memberships_role")):
+        op.create_index(op.f("ix_memberships_role"), "memberships", ["role"], unique=False)
+    if not _has_index(bind, "memberships", op.f("ix_memberships_user_id")):
+        op.create_index(op.f("ix_memberships_user_id"), "memberships", ["user_id"], unique=False)
+    if not _has_index(bind, "memberships", op.f("ix_memberships_workspace_id")):
+        op.create_index(
+            op.f("ix_memberships_workspace_id"), "memberships", ["workspace_id"], unique=False
+        )
 
     # Engagement tenancy & approval fields
-    op.add_column("engagements", sa.Column("organization_id", sa.UUID(), nullable=True))
-    op.add_column("engagements", sa.Column("workspace_id", sa.UUID(), nullable=True))
-    op.add_column("engagements", sa.Column("approved_by", sa.UUID(), nullable=True))
-    op.add_column(
-        "engagements", sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True)
-    )
-    op.create_index(
-        op.f("ix_engagements_organization_id"), "engagements", ["organization_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_engagements_workspace_id"), "engagements", ["workspace_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_engagements_approved_by"), "engagements", ["approved_by"], unique=False
-    )
-    op.create_foreign_key(
-        "fk_engagements_organization_id_organizations",
-        "engagements",
-        "organizations",
-        ["organization_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_foreign_key(
-        "fk_engagements_workspace_id_workspaces",
-        "engagements",
-        "workspaces",
-        ["workspace_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_foreign_key(
-        "fk_engagements_approved_by_users",
-        "engagements",
-        "users",
-        ["approved_by"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    for col, coltype in [
+        ("organization_id", sa.UUID()),
+        ("workspace_id", sa.UUID()),
+        ("approved_by", sa.UUID()),
+        ("approved_at", sa.DateTime(timezone=True)),
+    ]:
+        if not _has_column(bind, "engagements", col):
+            op.add_column("engagements", sa.Column(col, coltype, nullable=True))
+    if not _has_index(bind, "engagements", op.f("ix_engagements_organization_id")):
+        op.create_index(
+            op.f("ix_engagements_organization_id"), "engagements", ["organization_id"], unique=False
+        )
+    if not _has_index(bind, "engagements", op.f("ix_engagements_workspace_id")):
+        op.create_index(
+            op.f("ix_engagements_workspace_id"), "engagements", ["workspace_id"], unique=False
+        )
+    if not _has_index(bind, "engagements", op.f("ix_engagements_approved_by")):
+        op.create_index(
+            op.f("ix_engagements_approved_by"), "engagements", ["approved_by"], unique=False
+        )
+    if not _has_fk(bind, "engagements", "fk_engagements_organization_id_organizations"):
+        # Normalize if an alternate FK name exists from the parallel ab12 branch.
+        if _has_fk(bind, "engagements", "fk_engagements_organization_id"):
+            op.drop_constraint(
+                "fk_engagements_organization_id", "engagements", type_="foreignkey"
+            )
+        op.create_foreign_key(
+            "fk_engagements_organization_id_organizations",
+            "engagements",
+            "organizations",
+            ["organization_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+    if not _has_fk(bind, "engagements", "fk_engagements_workspace_id_workspaces"):
+        op.create_foreign_key(
+            "fk_engagements_workspace_id_workspaces",
+            "engagements",
+            "workspaces",
+            ["workspace_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+    if not _has_fk(bind, "engagements", "fk_engagements_approved_by_users"):
+        op.create_foreign_key(
+            "fk_engagements_approved_by_users",
+            "engagements",
+            "users",
+            ["approved_by"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
     # Extend engagement status enum values (Postgres)
     _add_enum_values(
@@ -136,33 +189,46 @@ def upgrade() -> None:
     )
 
     # Evidence integrity/provenance fields
-    op.add_column("evidence", sa.Column("organization_id", sa.UUID(), nullable=True))
-    op.add_column("evidence", sa.Column("engagement_id", sa.UUID(), nullable=True))
-    op.add_column("evidence", sa.Column("sha256", sa.String(length=64), nullable=True))
-    op.add_column("evidence", sa.Column("collector", sa.String(length=255), nullable=True))
-    op.add_column("evidence", sa.Column("tool", sa.String(length=255), nullable=True))
-    op.add_column("evidence", sa.Column("tool_version", sa.String(length=100), nullable=True))
-    op.create_index(
-        op.f("ix_evidence_organization_id"), "evidence", ["organization_id"], unique=False
-    )
-    op.create_index(op.f("ix_evidence_engagement_id"), "evidence", ["engagement_id"], unique=False)
-    op.create_index(op.f("ix_evidence_sha256"), "evidence", ["sha256"], unique=False)
-    op.create_foreign_key(
-        "fk_evidence_organization_id_organizations",
-        "evidence",
-        "organizations",
-        ["organization_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-    op.create_foreign_key(
-        "fk_evidence_engagement_id_engagements",
-        "evidence",
-        "engagements",
-        ["engagement_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    for col, coltype in [
+        ("organization_id", sa.UUID()),
+        ("engagement_id", sa.UUID()),
+        ("sha256", sa.String(length=64)),
+        ("collector", sa.String(length=255)),
+        ("tool", sa.String(length=255)),
+        ("tool_version", sa.String(length=100)),
+    ]:
+        if not _has_column(bind, "evidence", col):
+            op.add_column("evidence", sa.Column(col, coltype, nullable=True))
+    if not _has_index(bind, "evidence", op.f("ix_evidence_organization_id")):
+        op.create_index(
+            op.f("ix_evidence_organization_id"), "evidence", ["organization_id"], unique=False
+        )
+    if not _has_index(bind, "evidence", op.f("ix_evidence_engagement_id")):
+        op.create_index(
+            op.f("ix_evidence_engagement_id"), "evidence", ["engagement_id"], unique=False
+        )
+    if not _has_index(bind, "evidence", op.f("ix_evidence_sha256")):
+        op.create_index(op.f("ix_evidence_sha256"), "evidence", ["sha256"], unique=False)
+    if not _has_fk(bind, "evidence", "fk_evidence_organization_id_organizations"):
+        if _has_fk(bind, "evidence", "fk_evidence_organization_id"):
+            op.drop_constraint("fk_evidence_organization_id", "evidence", type_="foreignkey")
+        op.create_foreign_key(
+            "fk_evidence_organization_id_organizations",
+            "evidence",
+            "organizations",
+            ["organization_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
+    if not _has_fk(bind, "evidence", "fk_evidence_engagement_id_engagements"):
+        op.create_foreign_key(
+            "fk_evidence_engagement_id_engagements",
+            "evidence",
+            "engagements",
+            ["engagement_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:

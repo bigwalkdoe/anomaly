@@ -18,37 +18,65 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _has_table(bind, name: str) -> bool:
+    return sa.inspect(bind).has_table(name)
+
+
+def _has_column(bind, table: str, column: str) -> bool:
+    if not _has_table(bind, table):
+        return False
+    return any(c["name"] == column for c in sa.inspect(bind).get_columns(table))
+
+
+def _has_index(bind, table: str, name: str) -> bool:
+    if not _has_table(bind, table):
+        return False
+    return any(i["name"] == name for i in sa.inspect(bind).get_indexes(table))
+
+
+def _has_fk(bind, table: str, name: str) -> bool:
+    if not _has_table(bind, table):
+        return False
+    return any(fk.get("name") == name for fk in sa.inspect(bind).get_foreign_keys(table))
+
+
 def _add_org_column(table: str, ondelete: str = "CASCADE") -> None:
-    op.add_column(table, sa.Column("organization_id", sa.UUID(), nullable=True))
-    op.create_index(f"ix_{table}_organization_id", table, ["organization_id"], unique=False)
-    op.create_foreign_key(
-        f"fk_{table}_organization_id",
-        table,
-        "organizations",
-        ["organization_id"],
-        ["id"],
-        ondelete=ondelete,
-    )
+    bind = op.get_bind()
+    if not _has_column(bind, table, "organization_id"):
+        op.add_column(table, sa.Column("organization_id", sa.UUID(), nullable=True))
+    idx = f"ix_{table}_organization_id"
+    if not _has_index(bind, table, idx):
+        op.create_index(idx, table, ["organization_id"], unique=False)
+    fk = f"fk_{table}_organization_id"
+    canonical_fk = f"fk_{table}_organization_id_organizations"
+    if not _has_fk(bind, table, fk) and not _has_fk(bind, table, canonical_fk):
+        op.create_foreign_key(
+            fk, table, "organizations", ["organization_id"], ["id"], ondelete=ondelete
+        )
 
 
 def upgrade() -> None:
     """Upgrade schema."""
+    bind = op.get_bind()
     _add_org_column("runs")
     _add_org_column("findings")
     _add_org_column("evidence")
     _add_org_column("reports")
     _add_org_column("audit_logs", ondelete="SET NULL")
     _add_org_column("approvals")
-    op.add_column("approvals", sa.Column("engagement_id", sa.UUID(), nullable=True))
-    op.create_index("ix_approvals_engagement_id", "approvals", ["engagement_id"], unique=False)
-    op.create_foreign_key(
-        "fk_approvals_engagement_id",
-        "approvals",
-        "engagements",
-        ["engagement_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    if not _has_column(bind, "approvals", "engagement_id"):
+        op.add_column("approvals", sa.Column("engagement_id", sa.UUID(), nullable=True))
+    if not _has_index(bind, "approvals", "ix_approvals_engagement_id"):
+        op.create_index("ix_approvals_engagement_id", "approvals", ["engagement_id"], unique=False)
+    if not _has_fk(bind, "approvals", "fk_approvals_engagement_id"):
+        op.create_foreign_key(
+            "fk_approvals_engagement_id",
+            "approvals",
+            "engagements",
+            ["engagement_id"],
+            ["id"],
+            ondelete="CASCADE",
+        )
 
 
 def downgrade() -> None:
