@@ -171,6 +171,32 @@ async def test_evidence_truncates_stored_output_and_flags_metadata(db_session):
 
 
 @pytest.mark.asyncio
+async def test_evidence_truncates_large_stderr_and_preserves_full_hash(db_session):
+    stdout = "A" * 50
+    stderr = "B" * (MAX_EVIDENCE_TEXT_BYTES + 100)
+    _org, _engagement, run = await _setup_run(
+        db_session, targets=["example.com"], scope_entries=["example.com"]
+    )
+    runner = FakeRunner(result=RunResult(exit_code=0, stdout=stdout, stderr=stderr))
+
+    await execute_run(db_session, run.id, runner=runner)
+
+    evidence = await db_session.scalar(select(Evidence).where(Evidence.run_id == run.id))
+    assert evidence is not None
+    meta = evidence.metadata
+
+    assert meta["stdout_truncated"] is False
+    assert meta["stderr_truncated"] is True
+    assert meta["stdout"] == stdout
+    assert meta["stderr"] == "B" * MAX_EVIDENCE_TEXT_BYTES
+    assert len(meta["stderr"].encode("utf-8")) == MAX_EVIDENCE_TEXT_BYTES
+
+    full_sha = hashlib.sha256((stdout + "\n" + stderr).encode("utf-8")).hexdigest()
+    assert evidence.sha256 == full_sha
+    assert meta["sha256"] == full_sha
+
+
+@pytest.mark.asyncio
 async def test_evidence_preserves_small_output_without_truncation_flags(db_session):
     stdout = "small stdout"
     stderr = "small stderr"
