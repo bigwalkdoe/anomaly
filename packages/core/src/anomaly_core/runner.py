@@ -52,18 +52,94 @@ class DockerRunner:
         self.network = network
 
     async def run(self, spec: RunSpec) -> RunResult:
-        # Build docker run args as specified - this is for testing
-        self._build_args(spec)
-        # In real implementation would run container; for interface compliance
-        return RunResult(exit_code=0, stdout="", stderr="", artifacts=[])
+        import asyncio
+        import time
+
+        args = self._build_args(spec)
+        if self.client is None:
+            return RunResult(
+                exit_code=125,
+                stdout="",
+                stderr="Docker client unavailable",
+                artifacts=[],
+                duration_s=0.0,
+            )
+
+        def _run_sync() -> RunResult:
+            import contextlib
+
+            started = time.monotonic()
+            container = None
+            try:
+                container = self.client.containers.run(detach=True, **args)
+                try:
+                    wait_result = container.wait(timeout=max(1, int(spec.timeout_s)))
+                except Exception:
+                    with contextlib.suppress(Exception):
+                        container.kill()
+                    with contextlib.suppress(Exception):
+                        container.wait(timeout=5)
+                    duration = time.monotonic() - started
+                    stdout = b""
+                    stderr = b""
+                    with contextlib.suppress(Exception):
+                        stdout = container.logs(stdout=True, stderr=False) or b""
+                        stderr = container.logs(stdout=False, stderr=True) or b""
+                    timeout_msg = "\nExecution timed out"
+                    return RunResult(
+                        exit_code=124,
+                        stdout=stdout.decode("utf-8", errors="replace"),
+                        stderr=(stderr.decode("utf-8", errors="replace") + timeout_msg).strip(),
+                        artifacts=[],
+                        duration_s=duration,
+                    )
+
+                status_code = 1
+                if isinstance(wait_result, dict):
+                    status_code = int(wait_result.get("StatusCode", 1))
+                else:
+                    try:
+                        status_code = int(wait_result)
+                    except Exception:
+                        status_code = 1
+                stdout, stderr = b"", b""
+                with contextlib.suppress(Exception):
+                    stdout = container.logs(stdout=True, stderr=False) or b""
+                    stderr = container.logs(stdout=False, stderr=True) or b""
+                duration = time.monotonic() - started
+                return RunResult(
+                    exit_code=status_code,
+                    stdout=stdout.decode("utf-8", errors="replace"),
+                    stderr=stderr.decode("utf-8", errors="replace"),
+                    artifacts=[],
+                    duration_s=duration,
+                )
+            except Exception as exc:
+                duration = time.monotonic() - started
+                return RunResult(
+                    exit_code=125,
+                    stdout="",
+                    stderr=str(exc),
+                    artifacts=[],
+                    duration_s=duration,
+                )
+            finally:
+                if container is not None:
+                    with contextlib.suppress(Exception):
+                        container.remove(force=True)
+
+        return await asyncio.to_thread(_run_sync)
 
     def _build_args(self, spec: RunSpec) -> dict[str, Any]:
         limits = spec.resource_limits or {}
+        network = spec.network if spec.network is not None else self.network
+        if network is None:
+            network = "none"
         args: dict[str, Any] = {
             "image": spec.image,
             "command": spec.command,
-            "network": spec.network or self.network,
-            "environment": spec.env,
+            "network": network,
+            "environment": spec.env or None,
             "mem_limit": limits.get("mem_limit"),
             "cpu_period": limits.get("cpu_period"),
             "cpu_quota": limits.get("cpu_quota"),
