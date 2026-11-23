@@ -242,6 +242,17 @@ async def v1_list_reports(
             .order_by(Report.version.desc(), Report.created_at.desc())
         )
     ).all()
+    await AuditService.log(
+        actor_id=user.id,
+        action="report.list",
+        resource_type="engagement",
+        resource_id=engagement_id,
+        engagement_id=engagement_id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={"count": len(rows)},
+        db=db,
+    )
+    await db.commit()
     return _envelope(
         request,
         [
