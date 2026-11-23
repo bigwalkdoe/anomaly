@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import Any
 from uuid import UUID
@@ -18,7 +19,7 @@ from anomaly_core.models import (
     Target,
 )
 from anomaly_core.policy import evaluate_assessment_request
-from anomaly_core.runner import FakeRunner, RunSpec
+from anomaly_core.runner import FakeRunner, RunResult, RunSpec
 from anomaly_tools import ToolSpec as AnomalyToolSpec
 from anomaly_tools import get_default_registry
 from anomaly_tools.stub import stub_tool
@@ -239,7 +240,22 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
         timeout_s=DEFAULT_RUN_TIMEOUT_S,
         resource_limits=dict(DEFAULT_RESOURCE_LIMITS),
     )
-    runner_result = await runner.run(run_spec)
+    try:
+        runner_result = await asyncio.wait_for(
+            runner.run(run_spec), timeout=run_spec.timeout_s + 10
+        )
+    except TimeoutError:
+        runner_result = RunResult(exit_code=124, stdout="", stderr="Execution timed out")
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="run.timeout",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
+            metadata={"tool": run.tool, "timeout_s": run_spec.timeout_s},
+            db=db,
+        )
 
     stdout = getattr(runner_result, "stdout", "") or ""
     stderr = getattr(runner_result, "stderr", "") or ""

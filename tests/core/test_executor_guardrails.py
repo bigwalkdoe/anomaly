@@ -233,3 +233,36 @@ async def test_run_spec_uses_default_timeout_and_resource_limits(db_session):
     assert spec.timeout_s == DEFAULT_RUN_TIMEOUT_S == 300
     assert spec.resource_limits == DEFAULT_RESOURCE_LIMITS
     assert spec.resource_limits == {"mem_limit": "512m", "pids_limit": 256}
+
+
+@pytest.mark.asyncio
+async def test_execute_run_marks_timeout_as_failed_and_audits(db_session, monkeypatch):
+    _org, _engagement, run = await _setup_run(
+        db_session, targets=["example.com"], scope_entries=["example.com"]
+    )
+
+    class _SlowRunner:
+        specs = []
+
+        async def run(self, spec):
+            self.specs.append(spec)
+            raise TimeoutError()
+
+    async def _raise_timeout(awaitable, timeout=None):
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            awaitable.close()
+        raise TimeoutError()
+
+    monkeypatch.setattr("anomaly_worker.executor.asyncio.wait_for", _raise_timeout)
+    runner = _SlowRunner()
+
+    result = await execute_run(db_session, run.id, runner=runner)
+
+    assert result.status == RunStatus.failed
+    audit_rows = (
+        await db_session.scalars(select(AuditLog).where(AuditLog.resource_id == run.id))
+    ).all()
+    timeout_audits = [a for a in audit_rows if a.action == "run.timeout"]
+    assert timeout_audits, "expected run.timeout audit event"
