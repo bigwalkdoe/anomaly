@@ -673,3 +673,45 @@ async def test_cross_tenant_aggregate_endpoints_do_not_leak(client, db_session):
     assert all("SECRET" not in str(a) for a in actions)
     assert all("NULL-ORG-B" not in str(a) for a in actions)
     assert all(a.get("action") != "system.secret" for a in actions)
+
+
+@pytest.mark.asyncio
+async def test_tags_are_org_scoped(client, db_session):
+    admin_a = await _seed(db_session, "tag-a@example.com", RoleName.admin)
+    admin_b = await _seed(db_session, "tag-b@example.com", RoleName.admin)
+    org_a = Organization(name="Tag Org A", slug="tag-org-a")
+    org_b = Organization(name="Tag Org B", slug="tag-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            Membership(user_id=admin_a.id, organization_id=org_a.id, role="owner"),
+            Membership(user_id=admin_b.id, organization_id=org_b.id, role="owner"),
+        ]
+    )
+    await db_session.commit()
+
+    headers_a = {"Authorization": f"Bearer {create_access_token(admin_a.id, ['admin'])}"}
+    headers_b = {"Authorization": f"Bearer {create_access_token(admin_b.id, ['admin'])}"}
+
+    r = await client.post(
+        "/api/tags", headers=headers_a, json={"name": "internal", "color": "#111"}
+    )
+    assert r.status_code == 200
+    tag_a = r.json()
+    assert tag_a["organization_id"] == str(org_a.id)
+
+    r = await client.get("/api/tags", headers=headers_a)
+    assert r.status_code == 200
+    assert any(t["name"] == "internal" for t in r.json())
+
+    r = await client.get("/api/tags", headers=headers_b)
+    assert r.status_code == 200
+    assert all(t["name"] != "internal" for t in r.json())
+
+    r = await client.post(
+        "/api/tags",
+        headers=headers_b,
+        json={"name": "steal", "color": "#222", "organization_id": str(org_a.id)},
+    )
+    assert r.status_code == 403
