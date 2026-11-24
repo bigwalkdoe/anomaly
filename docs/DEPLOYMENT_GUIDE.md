@@ -187,3 +187,47 @@ docker cp anomaly-minio-1:/data ./minio-backup
 1. Check API logs: `docker compose logs anomaly-api`
 2. Verify database migrations are applied: `alembic upgrade head`
 3. Check Redis connectivity
+
+## Security Hardening (Deployment)
+
+### Reverse Proxy / Ingress
+
+When running behind a reverse proxy (nginx, Traefik, Cloudflare, etc.):
+
+- **Forward security headers**: Ensure the proxy does not strip or override the API's
+  security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+  `Content-Security-Policy`). Verify with `curl -I` against the proxied endpoint.
+- **CORS origins**: Set `ANOMALY_CORS_ORIGINS` (or `CORS_ALLOW_ORIGINS`) to specific
+  trusted domains in production. Never use `*` with credentials enabled.
+- **Rate limiting**: The API includes `RateLimitMiddleware` (default 100 req/60s per IP).
+  Consider additional proxy-level rate limiting for DDoS protection.
+- **TLS termination**: Terminate TLS at the proxy/load balancer. The API itself does not
+  handle TLS. Enable HSTS at the proxy level (`Strict-Transport-Security`).
+
+### Token-in-Query Log Redaction (WebSocket)
+
+WebSocket endpoints accept tokens via query parameter (`?token=...`) for browser
+compatibility, and optionally via `Authorization: Bearer` header. To prevent token
+leakage in proxy/access logs:
+
+- **nginx**: Use a custom log format that redacts query parameters:
+  ```nginx
+  log_format redacted '$remote_addr - $remote_user [$time_local] '
+                      '"$request_method $uri $server_protocol" $status $body_bytes_sent';
+  ```
+  Note: `$uri` excludes query string; `$request_uri` includes it.
+- **Traefik**: Configure access logs to omit query strings or use a custom format.
+- **Cloudflare**: Access logs are managed by Cloudflare; tokens in query params may
+  appear in Cloudflare analytics. Prefer `Authorization` header when possible.
+- **Application-level**: The API does not log request URLs or query strings. Uvicorn
+  access logs include the full request path including query string by default — disable
+  or customize Uvicorn's `--access-log` format in production.
+
+### Metrics Endpoint Protection
+
+Set `ANOMALY_METRICS_AUTH_REQUIRED=true` to require an authenticated admin user
+for `/api/metrics`. Default is `false` for backward compatibility.
+
+### Upload Limits
+
+Configure `MAX_UPLOAD_SIZE_BYTES` (default 50 MB) to control maximum file upload size.

@@ -23,6 +23,32 @@ async def test_invalid_token_rejected(client):
 
 
 @pytest.mark.asyncio
+async def test_malformed_jwt_rejected(client):
+    """Malformed JWT strings should be rejected with 401."""
+    for bad_token in ("not.a.jwt", "aaaa", "", "Bearer", "x.y"):
+        response = await client.get(
+            "/api/engagements", headers={"Authorization": f"Bearer {bad_token}"}
+        )
+        assert response.status_code in (401, 403), bad_token
+
+
+@pytest.mark.asyncio
+async def test_missing_bearer_prefix_rejected(client):
+    """Authorization header without Bearer prefix should be rejected."""
+    response = await client.get(
+        "/api/engagements", headers={"Authorization": "some-raw-token"}
+    )
+    assert response.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_empty_authorization_header_rejected(client):
+    """Empty Authorization header should be rejected."""
+    response = await client.get("/api/engagements", headers={"Authorization": ""})
+    assert response.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
 async def test_sql_injection_in_search_is_safe(client, db_session):
     """SQL injection attempts in search should not cause errors or data leaks."""
     admin_role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))

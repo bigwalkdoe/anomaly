@@ -178,13 +178,13 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
 
     # WS run status: existing inaccessible run must not leak existence
     r = await client.get(f"/api/ws/runs/{run_b.id}/status", headers=headers_a)
-    assert r.status_code in (403, 404)
+    assert r.status_code == 404
 
     # Direct run access across tenants must not leak existence
     r = await client.get(f"/api/runs/{run_b.id}", headers=headers_a)
-    assert r.status_code in (403, 404)
+    assert r.status_code == 404
     r = await client.get(f"/api/v1/runs/{run_b.id}", headers=headers_a)
-    assert r.status_code in (403, 404)
+    assert r.status_code == 404
 
     # Persisted reports (engagement-scoped) must not leak across tenants
     from anomaly_core.models import Playbook, Report, ReportFormat, ReportStatus
@@ -202,9 +202,9 @@ async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_sessio
     await db_session.flush()
 
     r = await client.get(f"/api/reports/{report_b.id}", headers=headers_a)
-    assert r.status_code in (403, 404)
+    assert r.status_code == 404
     r = await client.get(f"/api/v1/reports/{report_b.id}", headers=headers_a)
-    assert r.status_code in (403, 404)
+    assert r.status_code == 404
 
     # Playbooks (engagement-scoped) must not leak across tenants
 

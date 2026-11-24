@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from anomaly_api.middleware import (
     RateLimitMiddleware,
     RequestIDMiddleware,
+    SecurityHeadersMiddleware,
     http_exception_handler,
     validation_exception_handler,
 )
@@ -163,6 +164,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_middleware(RateLimitMiddleware)

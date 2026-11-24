@@ -51,6 +51,30 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Conservative CSP: deny framing and most resource types by default;
+        # Swagger/ReDoc at /docs and /redoc require inline scripts/styles.
+        path = request.url.path
+        if path in ("/docs", "/redoc") or path.startswith("/openapi.json"):
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+                "https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' "
+                "https://cdn.jsdelivr.net; img-src 'self' data: https://cdn.jsdelivr.net"
+            )
+        else:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; frame-ancestors 'none'"
+            )
+        return response
+
+
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     request_id = getattr(getattr(request, "state", None), "request_id", None)
     content = {"success": False, "error": exc.detail}

@@ -75,12 +75,22 @@ manager = ConnectionManager()
 notification_manager = NotificationManager()
 
 
+def _extract_ws_token(websocket: WebSocket, token: str | None) -> str | None:
+    if token:
+        return token
+    auth = websocket.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return None
+
+
 @router.websocket("/api/ws/runs/{run_id}")
 async def run_websocket(
     websocket: WebSocket,
     run_id: str,
     token: str | None = None,
 ):
+    token = _extract_ws_token(websocket, token)
     if token is None:
         await websocket.close(code=4001, reason="Missing token")
         return
@@ -148,7 +158,8 @@ async def notification_websocket(
     websocket: WebSocket,
     token: str | None = None,
 ):
-    # Authenticate via token query parameter
+    # Authenticate via query parameter or Authorization header.
+    token = _extract_ws_token(websocket, token)
     if token is None:
         await websocket.close(code=4001, reason="Missing token")
         return

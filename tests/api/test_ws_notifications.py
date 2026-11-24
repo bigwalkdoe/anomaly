@@ -25,11 +25,12 @@ from starlette.websockets import WebSocketDisconnect
 class FakeWebSocket:
     """Minimal stand-in for starlette's WebSocket used to drive the route directly."""
 
-    def __init__(self) -> None:
+    def __init__(self, headers: dict[str, str] | None = None) -> None:
         self.accepted = False
         self.close_event: tuple[int, str | None] | None = None
         self.sent: list[dict] = []
         self.stop = asyncio.Event()
+        self.headers = headers or {}
 
     async def accept(self) -> None:
         self.accepted = True
@@ -339,6 +340,137 @@ async def test_run_websocket_connects_for_authorized_user(db_session):
             await asyncio.sleep(0.01)
         assert ws.accepted, "run websocket never accepted for authorized user"
         assert str(run.id) in manager.active_connections
+    finally:
+        ws.stop.set()
+        await asyncio.wait_for(task, timeout=5)
+        assert str(run.id) not in manager.active_connections or not manager.active_connections.get(
+            str(run.id)
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_status_returns_403_for_client_viewer_member(client, db_session):
+    pentester_role = await db_session.scalar(
+        select(Role).where(Role.name == RoleName.pentester)
+    )
+    if pentester_role is None:
+        pentester_role = Role(name=RoleName.pentester, description="pentester")
+        db_session.add(pentester_role)
+        await db_session.flush()
+    viewer_role = await db_session.scalar(select(Role).where(Role.name == RoleName.client_viewer))
+    if viewer_role is None:
+        viewer_role = Role(name=RoleName.client_viewer, description="client_viewer")
+        db_session.add(viewer_role)
+        await db_session.flush()
+
+    owner = User(
+        email="ws-owner@example.com",
+        name="Owner",
+        password_hash=hash_password("pass"),
+        roles=[pentester_role],
+    )
+    viewer = User(
+        email="ws-viewer@example.com",
+        name="Viewer",
+        password_hash=hash_password("pass"),
+        roles=[viewer_role],
+    )
+    db_session.add_all([owner, viewer])
+    await db_session.flush()
+
+    org = Organization(name="WS Run Status Org", slug="ws-run-status-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=owner.id, organization_id=org.id, role="owner"))
+    db_session.add(Membership(user_id=viewer.id, organization_id=org.id, role="member"))
+
+    engagement = Engagement(
+        name="WS Run Status Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=owner.id,
+        organization_id=org.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=owner.id, role=RoleName.pentester)
+    )
+    db_session.add(
+        EngagementMember(
+            engagement_id=engagement.id, user_id=viewer.id, role=RoleName.client_viewer
+        )
+    )
+    run = Run(
+        engagement_id=engagement.id,
+        user_id=owner.id,
+        tool="nmap",
+        status=RunStatus.queued,
+        organization_id=org.id,
+    )
+    db_session.add(run)
+    await db_session.commit()
+
+    resp = await client.get(
+        f"/api/ws/runs/{run.id}/status",
+        headers={"Authorization": f"Bearer {create_access_token(viewer.id, ['client_viewer'])}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_notification_ws_accepts_authorization_header(db_session):
+    user = await _make_user(db_session, "ws-header-auth@example.com")
+    ws = FakeWebSocket(
+        headers={"authorization": f"Bearer {create_access_token(user.id, ['admin'])}"}
+    )
+    task = asyncio.create_task(notification_websocket(ws, token=None))
+    try:
+        for _ in range(200):
+            if ws.accepted:
+                break
+            await asyncio.sleep(0.01)
+        assert ws.accepted, "websocket should accept valid Authorization header token"
+    finally:
+        ws.stop.set()
+        await asyncio.wait_for(task, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_run_websocket_accepts_authorization_header(db_session):
+    admin = await _make_user(db_session, "ws-run-header-auth@example.com")
+    org = Organization(name="RunWS Header Org", slug="runws-header-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org.id, role="owner"))
+    eng = Engagement(
+        name="RunWS Header Eng",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org.id,
+    )
+    db_session.add(eng)
+    await db_session.flush()
+    db_session.add(EngagementMember(engagement_id=eng.id, user_id=admin.id, role=RoleName.admin))
+    run = Run(
+        engagement_id=eng.id,
+        user_id=admin.id,
+        tool="nmap",
+        status=RunStatus.queued,
+        organization_id=org.id,
+    )
+    db_session.add(run)
+    await db_session.commit()
+
+    ws = FakeWebSocket(
+        headers={"authorization": f"Bearer {create_access_token(admin.id, ['admin'])}"}
+    )
+    task = asyncio.create_task(run_websocket(ws, run_id=str(run.id), token=None))
+    try:
+        for _ in range(200):
+            if ws.accepted:
+                break
+            await asyncio.sleep(0.01)
+        assert ws.accepted, "run websocket should accept valid Authorization header token"
     finally:
         ws.stop.set()
         await asyncio.wait_for(task, timeout=5)

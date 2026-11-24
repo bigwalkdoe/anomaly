@@ -43,7 +43,8 @@ This document outlines security hardening practices for the Anomaly platform.
 ### Headers
 
 - X-Request-ID header added to all responses for tracing
-- Consider adding: X-Content-Type-Options, X-Frame-Options, CSP
+- Security headers added to API responses: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy` (docs-safe policy for `/docs`/`/redoc`, restrictive `default-src 'none'` elsewhere)
+- Consider adding additional deployment-specific hardening as needed
 
 ## Container Security
 
