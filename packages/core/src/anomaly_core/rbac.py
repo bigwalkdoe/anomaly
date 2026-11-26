@@ -148,6 +148,8 @@ async def engagement_accessible(
             return False
 
     if has_role(user, RoleName.admin):
+        # Tenant-strict: org-scoped engagements require org membership (validated above).
+        # Unscoped (org-less) engagements fall back to this admin bypass.
         return True
 
     membership = await get_membership(db, user, engagement)
@@ -179,25 +181,28 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
 async def accessible_engagement_ids(
     db: AsyncSession, user: User, min_role: RoleName = RoleName.client_viewer
 ) -> set[uuid.UUID] | None:
-    """Return engagement IDs accessible to user, or None to indicate unrestricted access.
+    """Return engagement IDs accessible to user.
 
-    Unrestricted is only for users with global admin role when considering non-org-scoped
-    engagements; org-scoped engagements still require org membership and are filtered by
-    engagement_accessible semantics.
+    For org-scoped engagements this reflects tenant membership; for admins it returns the
+    engagements in orgs the admin belongs to (plus unscoped engagements).
     """
     from anomaly_core.models.tenancy import Membership
 
     if has_role(user, RoleName.admin):
-        # Admins can access all engagements in orgs they belong to, plus unscoped engagements.
+        # Admins can access engagements in orgs they belong to, plus unscoped engagements.
         org_rows = (
             await db.scalars(
                 select(Membership.organization_id).where(Membership.user_id == user.id)
             )
         ).all()
         org_ids = {oid for oid in org_rows if oid is not None}
-        q = select(Engagement.id).where(
-            (Engagement.organization_id.is_(None)) | (Engagement.organization_id.in_(org_ids))
-        )
+        q = select(Engagement.id)
+        if org_ids:
+            q = q.where(
+                (Engagement.organization_id.is_(None)) | (Engagement.organization_id.in_(org_ids))
+            )
+        else:
+            q = q.where(Engagement.organization_id.is_(None))
         ids = set((await db.scalars(q)).all())
         return ids
 

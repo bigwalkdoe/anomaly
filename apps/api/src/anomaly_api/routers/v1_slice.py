@@ -66,6 +66,8 @@ async def v1_list_engagements(
             q = q.where(
                 (Engagement.organization_id.in_(org_ids)) | (Engagement.organization_id.is_(None))
             )
+        else:
+            q = q.where(Engagement.organization_id.is_(None))
         engagements = (await db.scalars(q.offset(offset).limit(limit))).all()
     else:
         members = (
