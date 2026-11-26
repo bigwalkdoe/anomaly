@@ -6,6 +6,10 @@ from typing import Any
 
 from anomaly_core.scope import ScopeCheckResult, check_scope
 
+# Params that can relax execution guardrails. Never accept these from untrusted
+# suggestion sources such as AI provider output.
+RISKY_PARAM_KEYS = {"allow_risky_options", "allow_risky", "risk", "level"}
+
 
 @dataclass
 class PolicyDecision:

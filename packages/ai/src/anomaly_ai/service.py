@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from anomaly_core.audit import AuditService
+from anomaly_core.policy import RISKY_PARAM_KEYS
 from anomaly_tools.registry import get_default_registry
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,6 +109,7 @@ class AIService:
     ) -> dict[str, Any]:
         registry = get_default_registry()
         tools = registry.list_tools()
+        allowed_tools = set(tools)
         tool_lines = []
         for name in tools:
             t = registry.get(name)
@@ -143,25 +145,48 @@ class AIService:
         raw_text = resp.content or ""
         parse_success = False
         suggestions: list[dict[str, Any]] = []
+        rejected_suggestions: list[dict[str, str]] = []
+        rejected_params: list[str] = []
         notes: str | None = None
         try:
             parsed = _extract_json(raw_text)
             if isinstance(parsed, dict):
                 items = parsed.get("suggestions") or []
                 if isinstance(items, list):
-                    suggestions = [_normalize_suggestion(x) for x in items]
+                    for item in items:
+                        suggestion = _normalize_suggestion(item)
+                        if suggestion["tool"] not in allowed_tools:
+                            rejected_suggestions.append(
+                                {
+                                    "tool": suggestion["tool"],
+                                    "reason": "unregistered_tool",
+                                }
+                            )
+                            continue
+                        params = suggestion["params"]
+                        stripped = sorted(k for k in params if k in RISKY_PARAM_KEYS)
+                        if stripped:
+                            rejected_params.extend(stripped)
+                            suggestion["params"] = {
+                                k: v for k, v in params.items() if k not in RISKY_PARAM_KEYS
+                            }
+                        suggestions.append(suggestion)
                     notes_val = parsed.get("notes")
                     notes = str(notes_val) if notes_val is not None else None
                     parse_success = True
         except Exception:
             parse_success = False
             suggestions = []
+            rejected_suggestions = []
+            rejected_params = []
             notes = None
 
         result = {
             "provider": provider_name,
             "model": resp.model,
             "suggestions": suggestions if parse_success else [],
+            "rejected_suggestions": rejected_suggestions if parse_success else [],
+            "rejected_params": rejected_params if parse_success else [],
             "notes": notes if parse_success else None,
             "raw": None if parse_success else raw_text,
             "parse_success": parse_success,
@@ -184,6 +209,8 @@ class AIService:
                         "objective_len": len(objective or ""),
                         "parse_success": parse_success,
                         "suggestion_count": len(suggestions),
+                        "rejected_suggestion_count": len(rejected_suggestions),
+                        "rejected_params": rejected_params,
                         "prompt": _truncate(prompt_text),
                         "response": _truncate(raw_text),
                     },

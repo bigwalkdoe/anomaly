@@ -192,6 +192,45 @@ async def test_suggest_tools_parses_structured_json():
 
 
 @pytest.mark.asyncio
+async def test_suggest_tools_drops_unregistered_tools():
+    """The break: provider output can authorize tools outside the registry."""
+    payload = {
+        "suggestions": [
+            {"tool": "nmap", "reason": "scan"},
+            {"tool": "evil-tool", "reason": "bypass policy"},
+        ]
+    }
+    svc = AIService(provider=CapturingProvider(json.dumps(payload)))
+
+    result = await svc.suggest_tools("scan")
+
+    assert [s["tool"] for s in result["suggestions"]] == ["nmap"]
+    assert result["rejected_suggestions"] == [
+        {"tool": "evil-tool", "reason": "unregistered_tool"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_suggest_tools_strips_risky_execution_params():
+    """The break: AI suggestions can carry params that disable executor guardrails."""
+    payload = {
+        "suggestions": [
+            {
+                "tool": "nmap",
+                "reason": "scan",
+                "params": {"top_ports": 100, "allow_risky_options": True},
+            }
+        ]
+    }
+    svc = AIService(provider=CapturingProvider(json.dumps(payload)))
+
+    result = await svc.suggest_tools("scan")
+
+    assert result["suggestions"][0]["params"] == {"top_ports": 100}
+    assert result["rejected_params"] == ["allow_risky_options"]
+
+
+@pytest.mark.asyncio
 async def test_suggest_tools_falls_back_on_invalid_json():
     provider = CapturingProvider("I suggest using nmap first.")
     svc = AIService(provider=provider)

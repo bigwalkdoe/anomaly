@@ -29,7 +29,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-RISKY_PARAM_KEYS = {"allow_risky_options", "allow_risky", "risk", "level"}
 MAX_TARGETS_PER_RUN = 256
 MAX_EVIDENCE_TEXT_BYTES = 256 * 1024
 MAX_ARTIFACTS_PER_RUN = 100
