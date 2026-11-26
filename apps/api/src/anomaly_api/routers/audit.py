@@ -26,8 +26,15 @@ async def list_audit(
         engagement = await db.get(Engagement, engagement_id)
         if engagement is None:
             raise HTTPException(status_code=404, detail="Engagement not found")
-        if not await engagement_accessible(db, user, engagement):
+        # Keep inaccessible/cross-tenant engagements indistinguishable from missing ones.
+        if not await engagement_accessible(
+            db, user, engagement, min_role=RoleName.client_viewer
+        ):
             raise HTTPException(status_code=404, detail="Engagement not found")
+        # Audit metadata can contain sensitive execution details; match the pentester-level
+        # boundary used by engagement run reads instead of allowing every client viewer.
+        if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
+            raise HTTPException(status_code=403, detail="Forbidden")
         logs = await get_audit_log(db, engagement_id=engagement_id, limit=limit, offset=offset)
     else:
         if not has_role(user, RoleName.admin):

@@ -7,6 +7,8 @@ from anomaly_core.models import (
     Engagement,
     EngagementMember,
     EngagementMode,
+    Membership,
+    Organization,
     Role,
     RoleName,
     User,
@@ -129,3 +131,48 @@ async def test_audit_list_filters_and_respects_access(client, db_session):
         f"/api/audit?engagement_id={eng2.id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert resp2.status_code in (403, 404)
+
+
+@pytest.mark.asyncio
+async def test_engagement_audit_rejects_client_viewer_member(client, db_session):
+    """The break: engagement-scoped audit logs were readable by client viewers."""
+    viewer_role = await db_session.scalar(select(Role).where(Role.name == RoleName.client_viewer))
+    if viewer_role is None:
+        viewer_role = Role(name=RoleName.client_viewer, description="client_viewer")
+        db_session.add(viewer_role)
+        await db_session.flush()
+    viewer = User(
+        email="audit-viewer@example.com",
+        name="Viewer",
+        password_hash=hash_password("pass"),
+        roles=[viewer_role],
+    )
+    db_session.add(viewer)
+    await db_session.flush()
+
+    org = Organization(name="Audit Viewer Org", slug="audit-viewer-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=viewer.id, organization_id=org.id, role="member"))
+
+    engagement = Engagement(
+        name="Audit Viewer Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=viewer.id,
+        organization_id=org.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(
+            engagement_id=engagement.id, user_id=viewer.id, role=RoleName.client_viewer
+        )
+    )
+    await db_session.commit()
+
+    token = create_access_token(viewer.id, ["client_viewer"])
+    resp = await client.get(
+        f"/api/audit?engagement_id={engagement.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
