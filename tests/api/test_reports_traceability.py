@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 import pytest
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import (
@@ -8,6 +10,7 @@ from anomaly_core.models import (
     EngagementMode,
     Evidence,
     EvidenceType,
+    Report,
     Role,
     RoleName,
     Run,
@@ -107,3 +110,55 @@ async def test_v1_report_generate_includes_traceability(client, db_session):
     assert list_resp.status_code == 200
     listed = list_resp.json()["data"]
     assert any(r["id"] == data["report_id"] for r in listed)
+
+
+@pytest.mark.asyncio
+async def test_legacy_report_get_detects_tampered_content(client, db_session):
+    """The break: reports had no recorded checksum to compare against stored content."""
+    owner = await _seed_admin(db_session, "trace-tamper@example.com")
+    eng, _run, _ev = await _seed_engagement_with_evidence(db_session, owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner.id, ['admin'])}"}
+    gen = await client.get(
+        f"/api/reports/engagements/{eng.id}/generate?format=markdown", headers=headers
+    )
+    assert gen.status_code == 200
+    report_id = UUID(gen.json()["report_id"])
+    original_sha = gen.json()["traceability"]["report_sha256"]
+
+    report = await db_session.get(Report, report_id)
+    assert report is not None
+    report.content = "# TAMPERED"
+    await db_session.commit()
+
+    resp = await client.get(f"/api/reports/{report_id}", headers=headers)
+    assert resp.status_code == 200
+    trace = resp.json()["traceability"]
+    assert trace["recorded_sha256"] == original_sha
+    assert trace["report_sha256"] != original_sha
+    assert trace["verified"] is False
+
+
+@pytest.mark.asyncio
+async def test_v1_report_get_detects_tampered_content(client, db_session):
+    owner = await _seed_admin(db_session, "trace-v1-tamper@example.com")
+    eng, _run, _ev = await _seed_engagement_with_evidence(db_session, owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner.id, ['admin'])}"}
+    gen = await client.get(
+        f"/api/v1/engagements/{eng.id}/reports/generate?format=markdown", headers=headers
+    )
+    assert gen.status_code == 200
+    data = gen.json()["data"]
+    report_id = UUID(data["report_id"])
+    original_sha = data["traceability"]["report_sha256"]
+
+    report = await db_session.get(Report, report_id)
+    assert report is not None
+    report.content = "# TAMPERED V1"
+    await db_session.commit()
+
+    resp = await client.get(f"/api/v1/reports/{report_id}", headers=headers)
+    assert resp.status_code == 200
+    trace = resp.json()["data"]["traceability"]
+    assert trace["recorded_sha256"] == original_sha
+    assert trace["report_sha256"] != original_sha
+    assert trace["verified"] is False

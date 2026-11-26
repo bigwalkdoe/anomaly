@@ -144,11 +144,14 @@ async def get_evidence_integrity(evidence_id: UUID, user: CurrentUser, db: DbSes
         raise HTTPException(status_code=404, detail="Evidence not found")
     engagement_id, engagement = await _resolve_evidence_context(db, evidence)
     meta = evidence.metadata or {}
-    recorded = evidence.sha256 or meta.get("sha256")
+    column_sha = evidence.sha256
+    metadata_sha = meta.get("sha256")
+    inconsistent = bool(column_sha and metadata_sha and str(column_sha) != str(metadata_sha))
+    recorded = column_sha or metadata_sha
 
     computed = None
-    verification = "unavailable"
-    if "stdout" in meta or "stderr" in meta:
+    verification = "inconsistent" if inconsistent else "unavailable"
+    if not inconsistent and ("stdout" in meta or "stderr" in meta):
         content = f"{meta.get('stdout', '')}\n{meta.get('stderr', '')}".encode(
             "utf-8", errors="replace"
         )
@@ -165,13 +168,18 @@ async def get_evidence_integrity(evidence_id: UUID, user: CurrentUser, db: DbSes
         resource_id=evidence.id,
         engagement_id=engagement_id,
         organization_id=getattr(engagement, "organization_id", None) if engagement else None,
-        metadata={"verification": verification, "recorded": recorded is not None},
+        metadata={
+            "verification": verification,
+            "recorded": recorded is not None,
+            "inconsistent": inconsistent,
+        },
         db=db,
     )
     await db.commit()
     return {
         "id": str(evidence.id),
         "sha256": recorded,
+        "metadata_sha256": metadata_sha,
         "computed_sha256": computed,
         "recorded": recorded is not None,
         "verified": verification == "match",

@@ -30,6 +30,7 @@ from anomaly_api.assessment import (
     load_engagement_with_scope,
 )
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
+from anomaly_api.report_integrity import recorded_report_sha256, report_verification
 from anomaly_api.routers.auth import me as auth_me
 from anomaly_api.schemas.engagement import EngagementCreate, EngagementResponse
 
@@ -299,6 +300,8 @@ async def v1_get_report(request: Request, report_id: UUID, user: CurrentUser, db
     content_sha = (
         hashlib.sha256(report.content.encode("utf-8")).hexdigest() if report.content else None
     )
+    recorded_sha = await recorded_report_sha256(db, report.id)
+    verification = report_verification(content_sha, recorded_sha)
     return _envelope(
         request,
         {
@@ -313,6 +316,9 @@ async def v1_get_report(request: Request, report_id: UUID, user: CurrentUser, db
                 "organization_id": str(getattr(report, "organization_id", "") or ""),
                 "engagement_id": str(report.engagement_id),
                 "report_sha256": content_sha,
+                "recorded_sha256": recorded_sha,
+                "verification": verification,
+                "verified": verification == "match",
             },
         },
     )

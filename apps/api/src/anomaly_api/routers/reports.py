@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, select
 
 from anomaly_api.deps import CurrentUser, DbSession
+from anomaly_api.report_integrity import recorded_report_sha256, report_verification
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -83,6 +84,8 @@ async def get_report(report_id: UUID, user: CurrentUser, db: DbSession):
     content_sha = (
         hashlib.sha256(report.content.encode("utf-8")).hexdigest() if report.content else None
     )
+    recorded_sha = await recorded_report_sha256(db, report.id)
+    verification = report_verification(content_sha, recorded_sha)
     return {
         "id": str(report.id),
         "engagement_id": str(report.engagement_id),
@@ -95,6 +98,9 @@ async def get_report(report_id: UUID, user: CurrentUser, db: DbSession):
             "organization_id": str(getattr(report, "organization_id", "") or ""),
             "engagement_id": str(report.engagement_id),
             "report_sha256": content_sha,
+            "recorded_sha256": recorded_sha,
+            "verification": verification,
+            "verified": verification == "match",
         },
     }
 
