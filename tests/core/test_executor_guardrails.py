@@ -16,6 +16,7 @@ from anomaly_core.models import (
     RunStatus,
     Scope,
     ScopeEntry,
+    Target,
     User,
 )
 from anomaly_core.runner import FakeRunner, RunResult
@@ -290,3 +291,81 @@ async def test_execute_run_uses_docker_runner_when_env_selected(db_session, monk
 
     assert result.status == RunStatus.succeeded
     assert seen.get("used") is True
+
+
+@pytest.mark.asyncio
+async def test_out_of_scope_target_fails_before_runner_execution(db_session):
+    """The break: a runner invoked with an out-of-scope target would perform unauthorized work."""
+    _org, _engagement, run = await _setup_run(
+        db_session, targets=["evil.com"], scope_entries=["example.com"]
+    )
+    runner = FakeRunner(result=RunResult(exit_code=0, stdout="should not run"))
+
+    result = await execute_run(db_session, run.id, runner=runner)
+
+    assert result.status == RunStatus.failed
+    assert runner.specs == []
+    audit = await _denied_audit(db_session, run)
+    assert audit.metadata["reason"] == "out_of_scope"
+    assert "evil.com" in audit.metadata["out_of_scope"]
+    evidence = await db_session.scalar(select(Evidence).where(Evidence.run_id == run.id))
+    assert evidence is None
+
+
+@pytest.mark.asyncio
+async def test_discovered_targets_outside_scope_are_not_persisted(db_session, monkeypatch):
+    """The break: tool output can register out-of-scope targets without a scope check."""
+    _org, _engagement, run = await _setup_run(
+        db_session,
+        targets=["example.com"],
+        scope_entries=["example.com"],
+        tool="custom",
+    )
+
+    class Tool:
+        name = "custom"
+        supported_target_types = ["domain"]
+
+        def build_cmd(self, spec):
+            return ["custom"]
+
+        def parse(self, stdout):
+            return type(
+                "Parsed",
+                (),
+                {
+                    "findings": [],
+                    "discovered_targets": [
+                        {"value": "app.example.com", "type": "domain"},
+                        {"value": "evil.com", "type": "domain"},
+                    ],
+                },
+            )()
+
+    class Registry:
+        def get(self, name):
+            return Tool() if name == "custom" else None
+
+    import anomaly_worker.executor as executor_module
+
+    monkeypatch.setattr(executor_module, "get_default_registry", lambda: Registry())
+    runner = FakeRunner(result=RunResult(exit_code=0, stdout="custom output", stderr=""))
+
+    await execute_run(db_session, run.id, runner=runner)
+
+    values = (
+        await db_session.scalars(
+            select(Target.value).where(Target.engagement_id == run.engagement_id)
+        )
+    ).all()
+    assert "app.example.com" in values
+    assert "evil.com" not in values
+
+    audit = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.action == "scope.discovered_rejected",
+            AuditLog.resource_id == run.id,
+        )
+    )
+    assert audit is not None
+    assert audit.metadata["out_of_scope"] == ["evil.com"]

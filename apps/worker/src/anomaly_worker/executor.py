@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import os
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 from anomaly_core.audit import AuditService
@@ -22,6 +23,7 @@ from anomaly_core.models import (
 )
 from anomaly_core.policy import evaluate_assessment_request
 from anomaly_core.runner import DockerRunner, FakeRunner, RunResult, RunSpec
+from anomaly_core.scope import check_scope
 from anomaly_tools import ToolSpec as AnomalyToolSpec
 from anomaly_tools import get_default_registry
 from anomaly_tools.stub import stub_tool
@@ -56,6 +58,12 @@ def _targets_from_run(run: Run) -> list[str]:
 def _tool_params(run: Run) -> dict[str, Any]:
     params = run.params if isinstance(run.params, dict) else {}
     return {k: v for k, v in params.items() if k != "targets"}
+
+
+def _scope_target_value(value: str) -> str:
+    """Reduce a discovered URL to its hostname for scope comparison."""
+    parsed = urlparse(str(value))
+    return parsed.hostname or str(value)
 
 
 def _severity(value: str) -> FindingSeverity:
@@ -130,7 +138,11 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             resource_id=run.id,
             engagement_id=run.engagement_id,
             organization_id=getattr(engagement, "organization_id", None),
-            metadata={**(decision.metadata or {}), "op": "assessment.execute"},
+            metadata={
+                **(decision.metadata or {}),
+                "reason": decision.reason,
+                "op": "assessment.execute",
+            },
             db=db,
         )
         await db.commit()
@@ -381,10 +393,14 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             if isinstance(f, dict):
                 finding_drafts.append(f)
 
-    # Create discovered targets (idempotent)
+    # Create discovered targets (idempotent), but never register out-of-scope values.
+    rejected_discovered: list[str] = []
     for t in discovered:
         value = str(t.get("value") or "").strip()
         if not value:
+            continue
+        if check_scope(engagement, [_scope_target_value(value)]).out_of_scope:
+            rejected_discovered.append(value)
             continue
         ttype = str(t.get("type") or "domain")
         exists = await db.scalar(
@@ -404,6 +420,20 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
                     discovered=bool(t.get("discovered", True)),
                 )
             )
+    if rejected_discovered:
+        await AuditService.log(
+            actor_id=run.user_id,
+            action="scope.discovered_rejected",
+            resource_type="run",
+            resource_id=run.id,
+            engagement_id=run.engagement_id,
+            organization_id=getattr(engagement, "organization_id", None),
+            metadata={
+                "out_of_scope": rejected_discovered,
+                "op": "assessment.execute",
+            },
+            db=db,
+        )
 
     engagement_targets = (
         await db.scalars(select(Target).where(Target.engagement_id == run.engagement_id))
