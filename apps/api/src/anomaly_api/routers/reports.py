@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 
 from anomaly_api.deps import CurrentUser, DbSession
 from anomaly_api.report_integrity import recorded_report_sha256, report_verification
+from anomaly_api.tenancy import child_organization_matches_engagement
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -37,6 +38,7 @@ async def list_reports(engagement_id: UUID, user: CurrentUser, db: DbSession):
             .order_by(Report.version.desc(), Report.created_at.desc())
         )
     ).all()
+    rows = [r for r in rows if child_organization_matches_engagement(r, engagement)]
     await AuditService.log(
         actor_id=user.id,
         action="report.list",
@@ -68,7 +70,11 @@ async def get_report(report_id: UUID, user: CurrentUser, db: DbSession):
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found")
     engagement = await db.get(Engagement, report.engagement_id)
-    if engagement is None or not await engagement_accessible(db, user, engagement):
+    if (
+        engagement is None
+        or not await engagement_accessible(db, user, engagement)
+        or not child_organization_matches_engagement(report, engagement)
+    ):
         raise HTTPException(status_code=404, detail="Report not found")
     await AuditService.log(
         actor_id=user.id,

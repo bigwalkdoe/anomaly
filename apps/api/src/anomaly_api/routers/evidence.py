@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import or_, select
 
 from anomaly_api.deps import CurrentUser, DbSession
+from anomaly_api.tenancy import child_organization_matches_engagement
 
 router = APIRouter(prefix="/api/evidence", tags=["evidence"])
 
@@ -33,7 +34,7 @@ async def _resolve_evidence_context(db: DbSession, evidence: Evidence):
 
 async def _can_access_evidence(db: DbSession, user, evidence: Evidence) -> bool:
     _, engagement = await _resolve_evidence_context(db, evidence)
-    if engagement is None:
+    if engagement is None or not child_organization_matches_engagement(evidence, engagement):
         return False
     return await engagement_accessible(db, user, engagement)
 

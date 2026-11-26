@@ -33,6 +33,7 @@ from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.report_integrity import recorded_report_sha256, report_verification
 from anomaly_api.routers.auth import me as auth_me
 from anomaly_api.schemas.engagement import EngagementCreate, EngagementResponse
+from anomaly_api.tenancy import child_organization_matches_engagement
 
 
 def _envelope(request: Request, data: Any) -> dict[str, Any]:
@@ -245,6 +246,7 @@ async def v1_list_reports(
             .order_by(Report.version.desc(), Report.created_at.desc())
         )
     ).all()
+    rows = [r for r in rows if child_organization_matches_engagement(r, engagement)]
     await AuditService.log(
         actor_id=user.id,
         action="report.list",
@@ -284,7 +286,11 @@ async def v1_get_report(request: Request, report_id: UUID, user: CurrentUser, db
     if report is None:
         raise HTTPException(status_code=404, detail="Report not found")
     engagement = await db.get(Engagement, report.engagement_id)
-    if engagement is None or not await engagement_accessible(db, user, engagement):
+    if (
+        engagement is None
+        or not await engagement_accessible(db, user, engagement)
+        or not child_organization_matches_engagement(report, engagement)
+    ):
         raise HTTPException(status_code=404, detail="Report not found")
     await AuditService.log(
         actor_id=user.id,

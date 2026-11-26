@@ -68,6 +68,123 @@ async def test_cross_tenant_authorization_regression(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_child_rows_with_foreign_org_are_hidden_from_accessible_engagement(
+    client, db_session
+):
+    """Defense in depth: child org must agree with the accessible engagement's org."""
+    from anomaly_core.models import (
+        Evidence as EvidenceModel,
+    )
+    from anomaly_core.models import (
+        EvidenceType,
+        Report,
+        ReportFormat,
+        ReportStatus,
+    )
+
+    admin = await _seed(db_session, "child-org-a@example.com", RoleName.admin)
+    other = await _seed(db_session, "child-org-b@example.com", RoleName.admin)
+    org_a = Organization(name="Child Org A", slug="child-org-a")
+    org_b = Organization(name="Child Org B", slug="child-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=other.id, organization_id=org_b.id, role="owner"))
+
+    engagement = Engagement(
+        name="Child Org Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org_a.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+
+    consistent_report = Report(
+        organization_id=org_a.id,
+        engagement_id=engagement.id,
+        version=1,
+        status=ReportStatus.draft,
+        format=ReportFormat.markdown,
+        content="# Consistent",
+        author_id=admin.id,
+    )
+    mismatched_report = Report(
+        organization_id=org_b.id,
+        engagement_id=engagement.id,
+        version=2,
+        status=ReportStatus.draft,
+        format=ReportFormat.markdown,
+        content="# Foreign SECRET",
+        author_id=admin.id,
+    )
+    consistent_evidence = EvidenceModel(
+        organization_id=org_a.id,
+        engagement_id=engagement.id,
+        type=EvidenceType.log,
+        storage_key="logs/consistent.txt",
+        sha256="d" * 64,
+        collector="worker",
+        tool="nmap",
+        metadata={"stdout": "consistent"},
+    )
+    mismatched_evidence = EvidenceModel(
+        organization_id=org_b.id,
+        engagement_id=engagement.id,
+        type=EvidenceType.log,
+        storage_key="logs/foreign.txt",
+        sha256="e" * 64,
+        collector="worker",
+        tool="nmap",
+        metadata={"stdout": "foreign secret"},
+    )
+    db_session.add_all(
+        [consistent_report, mismatched_report, consistent_evidence, mismatched_evidence]
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, [RoleName.admin.value])}"}
+
+    # Direct reads must hide mismatched children but keep consistent ones readable.
+    for path in (
+        f"/api/reports/{mismatched_report.id}",
+        f"/api/v1/reports/{mismatched_report.id}",
+        f"/api/evidence/{mismatched_evidence.id}/download",
+        f"/api/evidence/{mismatched_evidence.id}/file",
+        f"/api/evidence/{mismatched_evidence.id}/integrity",
+    ):
+        r = await client.get(path, headers=headers)
+        assert r.status_code == 404, path
+
+    r = await client.get(f"/api/reports/{consistent_report.id}", headers=headers)
+    assert r.status_code == 200
+    r = await client.get(f"/api/evidence/{consistent_evidence.id}/download", headers=headers)
+    assert r.status_code == 200
+
+    # Collection reads must not enumerate mismatched children.
+    for path in (
+        f"/api/reports/engagements/{engagement.id}",
+        f"/api/v1/engagements/{engagement.id}/reports",
+    ):
+        r = await client.get(path, headers=headers)
+        assert r.status_code == 200
+        payload = r.json()
+        rows = payload if isinstance(payload, list) else payload["data"]
+        ids = [row["id"] for row in rows]
+        assert str(consistent_report.id) in ids
+        assert str(mismatched_report.id) not in ids
+
+    r = await client.get("/api/evidence", headers=headers)
+    assert r.status_code == 200
+    evidence_ids = [row["id"] for row in r.json()]
+    assert str(consistent_evidence.id) in evidence_ids
+    assert str(mismatched_evidence.id) not in evidence_ids
+
+
+@pytest.mark.asyncio
 async def test_cross_tenant_isolation_across_hardened_surfaces(client, db_session):
     """Cross-tenant access must be denied/hidden across reports, evidence, ws, and aggregates."""
     from anomaly_core.models import (
