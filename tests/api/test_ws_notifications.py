@@ -418,6 +418,61 @@ async def test_run_status_returns_403_for_client_viewer_member(client, db_sessio
 
 
 @pytest.mark.asyncio
+async def test_run_ws_subscribe_rejects_client_viewer_member(db_session):
+    """The break: WS subscribe accepted viewers while HTTP run reads require pentester."""
+    viewer_role = await db_session.scalar(select(Role).where(Role.name == RoleName.client_viewer))
+    if viewer_role is None:
+        viewer_role = Role(name=RoleName.client_viewer, description="client_viewer")
+        db_session.add(viewer_role)
+        await db_session.flush()
+    viewer = User(
+        email="ws-sub-viewer@example.com",
+        name="Viewer",
+        password_hash=hash_password("pass"),
+        roles=[viewer_role],
+    )
+    db_session.add(viewer)
+    await db_session.flush()
+
+    org = Organization(name="WS Subscribe Org", slug="ws-subscribe-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=viewer.id, organization_id=org.id, role="member"))
+    engagement = Engagement(
+        name="WS Subscribe Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=viewer.id,
+        organization_id=org.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(
+            engagement_id=engagement.id, user_id=viewer.id, role=RoleName.client_viewer
+        )
+    )
+    run = Run(
+        engagement_id=engagement.id,
+        user_id=viewer.id,
+        tool="nmap",
+        status=RunStatus.queued,
+        organization_id=org.id,
+    )
+    db_session.add(run)
+    await db_session.commit()
+
+    ws = FakeWebSocket()
+    ws.stop.set()  # avoid blocking in the receive loop when the bug is present
+    await run_websocket(
+        ws, run_id=str(run.id), token=create_access_token(viewer.id, ["client_viewer"])
+    )
+
+    assert ws.accepted is False
+    assert ws.close_event is not None
+    assert ws.close_event[0] == 4403
+
+
+@pytest.mark.asyncio
 async def test_notification_ws_accepts_authorization_header(db_session):
     user = await _make_user(db_session, "ws-header-auth@example.com")
     ws = FakeWebSocket(

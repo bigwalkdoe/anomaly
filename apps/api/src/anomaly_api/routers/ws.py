@@ -118,8 +118,14 @@ async def run_websocket(
             return
         engagement = await db.get(Engagement, run.engagement_id)
         # Hide existence for inaccessible/cross-tenant runs.
-        if engagement is None or not await engagement_accessible(db, user, engagement):
+        if engagement is None or not await engagement_accessible(
+            db, user, engagement, min_role=RoleName.client_viewer
+        ):
             await websocket.close(code=4404, reason="Run not found")
+            return
+        # Match HTTP run reads: client_viewer members cannot subscribe to runs.
+        if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
+            await websocket.close(code=4403, reason="Forbidden")
             return
 
     await manager.connect(websocket, run_id)
