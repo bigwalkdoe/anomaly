@@ -8,6 +8,7 @@ from uuid import UUID
 
 from anomaly_core.audit import AuditService
 from anomaly_core.execution import validate_execution_manifest
+from anomaly_core.findings import finding_fingerprint
 from anomaly_core.models import (
     Engagement,
     Evidence,
@@ -418,8 +419,10 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             description = f.get("description", "") or ""
             remediation = f.get("remediation")
             cvss = f.get("cvss")
-            fp = f.get("fingerprint") or f"{run.id}:{title}:{description[:64]}"
             tval = f.get("target") or f.get("host") or f.get("url")
+            fp = f.get("fingerprint") or finding_fingerprint(
+                run.engagement_id, title, description, str(tval) if tval else None
+            )
             if tval is not None and str(tval) in target_by_value:
                 target_id = target_by_value[str(tval)]
         else:
@@ -429,10 +432,13 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             remediation = getattr(f, "remediation", None)
             cvss = getattr(f, "cvss", None)
             meta = getattr(f, "metadata", {}) or {}
+            tval = getattr(f, "target", None) or meta.get("target")
             fp = (
                 getattr(f, "fingerprint", None)
                 or meta.get("fingerprint")
-                or f"{run.id}:{title}:{description[:64]}"
+                or finding_fingerprint(
+                    run.engagement_id, title, description, str(tval) if tval else None
+                )
             )
             tval = meta.get("target") or meta.get("host") or meta.get("url")
             if tval is not None and str(tval) in target_by_value:

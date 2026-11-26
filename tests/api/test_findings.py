@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import pytest
 from anomaly_core.auth import create_access_token, hash_password
-from anomaly_core.models import Engagement, EngagementMember, EngagementMode, Role, RoleName, User
+from anomaly_core.models import (
+    Engagement,
+    EngagementMember,
+    EngagementMode,
+    Finding,
+    Role,
+    RoleName,
+    User,
+)
 from sqlalchemy import select
 
 
@@ -73,3 +81,41 @@ async def test_finding_crud_and_status_transition(client, db_session):
         f"/api/findings/{finding_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert resp.status_code in (200, 204)
+
+
+@pytest.mark.asyncio
+async def test_manual_findings_with_same_content_share_fingerprint(client, db_session):
+    """The break: random per-create fingerprints prevent normalization of duplicate findings."""
+    admin_role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
+    if admin_role is None:
+        admin_role = Role(name=RoleName.admin, description="admin")
+        db_session.add(admin_role)
+        await db_session.flush()
+    admin = User(
+        email="fp-admin@example.com",
+        name="Fingerprint Admin",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
+    db_session.add(admin)
+    await db_session.flush()
+    eng = Engagement(name="Fingerprint Eng", mode=EngagementMode.own_infra, owner_id=admin.id)
+    db_session.add(eng)
+    await db_session.commit()
+
+    token = create_access_token(admin.id, ["admin"])
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"title": "Reachable target", "severity": "high", "description": "port 80 open"}
+    for _ in range(2):
+        resp = await client.post(
+            f"/api/engagements/{eng.id}/findings", headers=headers, json=payload
+        )
+        assert resp.status_code == 201
+
+    fingerprints = (
+        await db_session.scalars(
+            select(Finding.fingerprint).where(Finding.engagement_id == eng.id)
+        )
+    ).all()
+    assert len(fingerprints) == 2
+    assert fingerprints[0] == fingerprints[1]

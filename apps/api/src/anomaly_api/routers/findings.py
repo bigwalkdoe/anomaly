@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from typing import Annotated
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from anomaly_core.audit import AuditService
+from anomaly_core.findings import finding_fingerprint
 from anomaly_core.models import Engagement, Finding, FindingSeverity, FindingStatus, RoleName
 from anomaly_core.rbac import engagement_accessible
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -76,7 +77,7 @@ async def create_finding(
         severity=FindingSeverity(payload.severity),
         description=payload.description,
         reporter_id=user.id,
-        fingerprint=f"{engagement.id}:{payload.title}:{uuid4()}",
+        fingerprint=finding_fingerprint(engagement.id, payload.title, payload.description),
     )
     db.add(finding)
     await AuditService.log(
