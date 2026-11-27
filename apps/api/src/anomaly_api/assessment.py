@@ -7,7 +7,7 @@ from uuid import UUID
 from anomaly_core.audit import AuditService
 from anomaly_core.execution import build_execution_manifest
 from anomaly_core.models import Engagement, Run, RunStatus, Scope, User
-from anomaly_core.policy import evaluate_assessment_request
+from anomaly_core.policy import PolicyDecision, evaluate_assessment_request
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +26,28 @@ async def load_engagement_with_scope(db: AsyncSession, engagement_id: UUID) -> E
         return await db.get(Engagement, engagement_id)
 
 
+async def record_assessment_policy_decision(
+    db: AsyncSession,
+    user: User,
+    engagement: Engagement,
+    decision: PolicyDecision,
+    *,
+    source: str | None,
+    op: str = "assessment.request",
+) -> None:
+    await AuditService.log(
+        actor_id=getattr(user, "id", None),
+        action="policy.allowed" if decision.allowed else "policy.denied",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata=decision.to_metadata(op=op, source=source),
+        db=db,
+    )
+    await db.commit()
+
+
 async def enforce_assessment_policy(
     db: AsyncSession,
     user: User,
@@ -33,23 +55,16 @@ async def enforce_assessment_policy(
     targets: list[str],
     *,
     scope_engagement: Engagement | None = None,
+    source: str | None = None,
 ) -> None:
     decision = evaluate_assessment_request(
         engagement, targets, scope_engagement=scope_engagement or engagement
     )
+    await record_assessment_policy_decision(
+        db, user, engagement, decision, source=source
+    )
     if decision.allowed:
         return
-    await AuditService.log(
-        actor_id=getattr(user, "id", None),
-        action="policy.denied",
-        resource_type="engagement",
-        resource_id=engagement.id,
-        engagement_id=engagement.id,
-        organization_id=getattr(engagement, "organization_id", None),
-        metadata=decision.metadata,
-        db=db,
-    )
-    await db.commit()
     detail = (
         "Engagement not approved for assessment"
         if decision.reason == "engagement_not_approved"

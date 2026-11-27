@@ -7,6 +7,7 @@ from anomaly_core.models import (
     Engagement,
     EngagementMember,
     EngagementMode,
+    EngagementStatus,
     Role,
     RoleName,
     Scope,
@@ -88,3 +89,135 @@ async def test_assessment_requires_approval_and_scope_policy(client, db_session,
         )
     )
     assert deny_audit is not None
+
+
+async def _seed_policy_engagement(db, owner_email, pt_email, status=EngagementStatus.approved):
+    owner = await _seed(db, owner_email, RoleName.admin)
+    pt = await _seed(db, pt_email, RoleName.pentester)
+    eng = Engagement(
+        name=f"Policy {owner_email}",
+        mode=EngagementMode.own_infra,
+        owner_id=owner.id,
+        status=status,
+    )
+    db.add(eng)
+    await db.flush()
+    db.add(EngagementMember(engagement_id=eng.id, user_id=pt.id, role=RoleName.pentester))
+    scope = Scope(engagement_id=eng.id)
+    db.add(scope)
+    await db.flush()
+    db.add(ScopeEntry(scope_id=scope.id, kind=ScopeEntryKind.in_, target_value="allowed.test"))
+    await db.commit()
+    return pt, eng
+
+
+@pytest.mark.asyncio
+async def test_allowed_assessment_records_policy_allowed_audit(client, db_session):
+    pt, eng = await _seed_policy_engagement(
+        db_session, "policy-allow-owner@example.com", "policy-allow-pt@example.com"
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(pt.id, [RoleName.pentester.value])}"}
+
+    response = await client.post(
+        f"/api/engagements/{eng.id}/runs",
+        headers=headers,
+        json={"tool": "stub", "targets": ["allowed.test"]},
+    )
+
+    assert response.status_code == 202
+    log = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.engagement_id == eng.id, AuditLog.action == "policy.allowed"
+        )
+    )
+    assert log is not None
+    assert log.metadata["allowed"] is True
+    assert log.metadata["reason"] is None
+    assert log.metadata["op"] == "assessment.request"
+    assert log.metadata["source"] == "api.legacy"
+    assert log.metadata["targets"] == ["allowed.test"]
+    assert log.metadata["in_scope"] == ["allowed.test"]
+    assert log.metadata["out_of_scope"] == []
+    assert log.metadata["has_warning"] is False
+
+
+@pytest.mark.asyncio
+async def test_out_of_scope_assessment_denial_records_scope_context(client, db_session):
+    pt, eng = await _seed_policy_engagement(
+        db_session, "policy-scope-owner@example.com", "policy-scope-pt@example.com"
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(pt.id, [RoleName.pentester.value])}"}
+
+    response = await client.post(
+        f"/api/engagements/{eng.id}/runs",
+        headers=headers,
+        json={"tool": "stub", "targets": ["evil.outside.test"]},
+    )
+
+    assert response.status_code == 403
+    log = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.engagement_id == eng.id, AuditLog.action == "policy.denied"
+        )
+    )
+    assert log is not None
+    assert log.metadata["allowed"] is False
+    assert log.metadata["reason"] == "out_of_scope"
+    assert log.metadata["targets"] == ["evil.outside.test"]
+    assert log.metadata["out_of_scope"] == ["evil.outside.test"]
+    assert log.metadata["has_warning"] is True
+    assert log.metadata["source"] == "api.legacy"
+
+
+@pytest.mark.asyncio
+async def test_unapproved_assessment_denial_records_status(client, db_session):
+    pt, eng = await _seed_policy_engagement(
+        db_session,
+        "policy-draft-owner@example.com",
+        "policy-draft-pt@example.com",
+        status=EngagementStatus.draft,
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(pt.id, [RoleName.pentester.value])}"}
+
+    response = await client.post(
+        f"/api/engagements/{eng.id}/runs",
+        headers=headers,
+        json={"tool": "stub", "targets": ["allowed.test"]},
+    )
+
+    assert response.status_code == 403
+    log = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.engagement_id == eng.id, AuditLog.action == "policy.denied"
+        )
+    )
+    assert log is not None
+    assert log.metadata["allowed"] is False
+    assert log.metadata["reason"] == "engagement_not_approved"
+    assert log.metadata["status"] == "draft"
+    assert log.metadata["op"] == "assessment.request"
+    assert log.metadata["source"] == "api.legacy"
+
+
+@pytest.mark.asyncio
+async def test_v1_allowed_assessment_records_policy_allowed_audit_with_source(client, db_session):
+    pt, eng = await _seed_policy_engagement(
+        db_session, "policy-v1-owner@example.com", "policy-v1-pt@example.com"
+    )
+    headers = {"Authorization": f"Bearer {create_access_token(pt.id, [RoleName.pentester.value])}"}
+
+    response = await client.post(
+        f"/api/v1/engagements/{eng.id}/runs",
+        headers=headers,
+        json={"tool": "stub", "targets": ["allowed.test"], "params": {}},
+    )
+
+    assert response.status_code == 202
+    log = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.engagement_id == eng.id, AuditLog.action == "policy.allowed"
+        )
+    )
+    assert log is not None
+    assert log.metadata["allowed"] is True
+    assert log.metadata["source"] == "api.v1"

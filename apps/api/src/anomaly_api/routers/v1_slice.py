@@ -240,7 +240,9 @@ async def v1_create_run(
 ):
     targets = list(payload.targets or [])
     eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
-    await enforce_assessment_policy(db, user, engagement, targets, scope_engagement=eng_loaded)
+    await enforce_assessment_policy(
+        db, user, engagement, targets, scope_engagement=eng_loaded, source="api.v1"
+    )
 
     run = await enqueue_assessment_run(
         db,
