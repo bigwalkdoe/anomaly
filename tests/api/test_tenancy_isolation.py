@@ -1066,3 +1066,205 @@ async def test_tags_are_org_scoped(client, db_session):
         json={"name": "steal", "color": "#222", "organization_id": str(org_a.id)},
     )
     assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_governed_approval_persists_request_and_decision(client, db_session):
+    from anomaly_core.models import Approval, ApprovalStatus
+
+    admin = await _seed(db_session, "approval-trace-admin@example.com", RoleName.admin)
+    org = Organization(name="Approval Trace Org", slug="approval-trace-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org.id, role="owner"))
+    engagement = Engagement(
+        name="Approval Trace Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, [RoleName.admin.value])}"}
+    submitted = await client.post(f"/api/engagements/{engagement.id}/submit", headers=headers)
+    assert submitted.status_code == 200
+
+    approval = await db_session.scalar(
+        select(Approval).where(Approval.engagement_id == engagement.id)
+    )
+    assert approval is not None
+    assert approval.status == ApprovalStatus.pending
+    assert approval.requester_id == admin.id
+    assert approval.organization_id == org.id
+
+    approved = await client.post(f"/api/engagements/{engagement.id}/approve", headers=headers)
+    assert approved.status_code == 200
+
+    await db_session.refresh(approval)
+    assert approval.status == ApprovalStatus.approved
+    assert approval.approver_id == admin.id
+    assert approval.decided_at is not None
+    assert approval.resource_type == "engagement"
+    assert approval.resource_id == engagement.id
+
+
+@pytest.mark.asyncio
+async def test_v1_approve_persists_approval_decision(client, db_session):
+    from anomaly_core.models import Approval, ApprovalStatus
+
+    admin = await _seed(db_session, "v1-approval-trace-admin@example.com", RoleName.admin)
+    org = Organization(name="V1 Approval Trace Org", slug="v1-approval-trace-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org.id, role="owner"))
+    engagement = Engagement(
+        name="V1 Approval Trace Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, [RoleName.admin.value])}"}
+    approved = await client.post(
+        f"/api/v1/engagements/{engagement.id}/approve", headers=headers
+    )
+    assert approved.status_code == 200
+
+    approval = await db_session.scalar(
+        select(Approval).where(Approval.engagement_id == engagement.id)
+    )
+    assert approval is not None
+    assert approval.status == ApprovalStatus.approved
+    assert approval.organization_id == org.id
+    assert approval.approver_id == admin.id
+    assert approval.decided_at is not None
+
+
+@pytest.mark.asyncio
+async def test_approval_read_filters_foreign_org_rows(client, db_session):
+    from anomaly_core.models import Approval, ApprovalStatus
+
+    admin = await _seed(db_session, "approval-read-admin@example.com", RoleName.admin)
+    other = await _seed(db_session, "approval-read-other@example.com", RoleName.admin)
+    org_a = Organization(name="Approval Read Org A", slug="approval-read-org-a")
+    org_b = Organization(name="Approval Read Org B", slug="approval-read-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=other.id, organization_id=org_b.id, role="owner"))
+    engagement = Engagement(
+        name="Approval Read Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org_a.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    consistent = Approval(
+        organization_id=org_a.id,
+        engagement_id=engagement.id,
+        resource_type="engagement",
+        resource_id=engagement.id,
+        requester_id=admin.id,
+        approver_id=admin.id,
+        status=ApprovalStatus.approved,
+    )
+    mismatched = Approval(
+        organization_id=org_b.id,
+        engagement_id=engagement.id,
+        resource_type="engagement",
+        resource_id=engagement.id,
+        requester_id=admin.id,
+        approver_id=admin.id,
+        status=ApprovalStatus.approved,
+    )
+    db_session.add_all([consistent, mismatched])
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, [RoleName.admin.value])}"}
+    legacy = await client.get(f"/api/engagements/{engagement.id}/approvals", headers=headers)
+    assert legacy.status_code == 200
+    legacy_ids = [row["id"] for row in legacy.json()]
+    assert str(consistent.id) in legacy_ids
+    assert str(mismatched.id) not in legacy_ids
+
+    v1 = await client.get(f"/api/v1/engagements/{engagement.id}/approvals", headers=headers)
+    assert v1.status_code == 200
+    v1_ids = [row["id"] for row in v1.json()["data"]]
+    assert str(consistent.id) in v1_ids
+    assert str(mismatched.id) not in v1_ids
+
+
+@pytest.mark.asyncio
+async def test_approval_read_no_leak_for_cross_tenant_and_viewer(client, db_session):
+    from anomaly_core.models import Approval, ApprovalStatus
+
+    admin = await _seed(db_session, "approval-leak-admin@example.com", RoleName.admin)
+    other = await _seed(db_session, "approval-leak-other@example.com", RoleName.admin)
+    viewer = await _seed(db_session, "approval-leak-viewer@example.com", RoleName.client_viewer)
+    org_a = Organization(name="Approval Leak Org A", slug="approval-leak-org-a")
+    org_b = Organization(name="Approval Leak Org B", slug="approval-leak-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=other.id, organization_id=org_b.id, role="owner"))
+    db_session.add(Membership(user_id=viewer.id, organization_id=org_a.id, role="member"))
+    engagement = Engagement(
+        name="Approval Leak Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org_a.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    db_session.add(
+        EngagementMember(
+            engagement_id=engagement.id, user_id=viewer.id, role=RoleName.client_viewer
+        )
+    )
+    db_session.add(
+        Approval(
+            organization_id=org_a.id,
+            engagement_id=engagement.id,
+            resource_type="engagement",
+            resource_id=engagement.id,
+            requester_id=admin.id,
+            approver_id=admin.id,
+            status=ApprovalStatus.approved,
+        )
+    )
+    await db_session.commit()
+
+    headers_admin = {"Authorization": f"Bearer {create_access_token(admin.id, ['admin'])}"}
+    headers_other = {"Authorization": f"Bearer {create_access_token(other.id, ['admin'])}"}
+    headers_viewer = {
+        "Authorization": f"Bearer {create_access_token(viewer.id, ['client_viewer'])}"
+    }
+
+    for path in (
+        f"/api/engagements/{engagement.id}/approvals",
+        f"/api/v1/engagements/{engagement.id}/approvals",
+    ):
+        cross_tenant = await client.get(path, headers=headers_other)
+        assert cross_tenant.status_code == 404, path
+        viewer_read = await client.get(path, headers=headers_viewer)
+        assert viewer_read.status_code == 403, path
+        allowed = await client.get(path, headers=headers_admin)
+        assert allowed.status_code == 200, path

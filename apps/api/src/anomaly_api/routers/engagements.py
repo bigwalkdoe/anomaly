@@ -5,6 +5,7 @@ from typing import Annotated
 
 from anomaly_core.audit import AuditService
 from anomaly_core.models import (
+    Approval,
     Engagement,
     EngagementMember,
     EngagementMode,
@@ -21,6 +22,11 @@ from anomaly_core.tenancy import get_user_memberships
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
+from anomaly_api.approvals import (
+    approval_response,
+    record_approval_decision,
+    record_approval_request,
+)
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.schemas.engagement import (
     EngagementCreate,
@@ -30,7 +36,10 @@ from anomaly_api.schemas.engagement import (
     TargetCreate,
     TargetResponse,
 )
-from anomaly_api.tenancy import resolve_creation_organization
+from anomaly_api.tenancy import (
+    child_organization_matches_engagement_sql,
+    resolve_creation_organization,
+)
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -100,6 +109,25 @@ async def get_engagement(
     return EngagementResponse.model_validate(engagement)
 
 
+@router.get("/{engagement_id}/approvals")
+async def list_engagement_approvals(
+    engagement: Annotated[
+        Engagement,
+        Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester)),
+    ],
+    db: DbSession,
+):
+    approvals = (
+        await db.scalars(
+            select(Approval)
+            .where(Approval.engagement_id == engagement.id)
+            .where(child_organization_matches_engagement_sql(Approval))
+            .order_by(Approval.created_at.desc())
+        )
+    ).all()
+    return [approval_response(approval) for approval in approvals]
+
+
 @router.patch("/{engagement_id}", response_model=EngagementResponse)
 async def update_engagement(
     payload: EngagementUpdate,
@@ -143,6 +171,7 @@ async def update_engagement(
     audit_metadata = dict(update_data)
     if status_changed_to_approved:
         audit_metadata.update({"approver_id": str(user.id), "status": engagement.status.value})
+        await record_approval_decision(db, engagement, user)
     await AuditService.log(
         actor_id=user.id,
         action=action,
@@ -231,6 +260,7 @@ async def submit_engagement(
     db: DbSession,
 ):
     engagement.status = EngagementStatus.pending_approval
+    await record_approval_request(db, engagement, user)
     await AuditService.log(
         actor_id=user.id,
         action="engagement.submit",
@@ -263,6 +293,7 @@ async def approve_engagement(
     engagement.status = EngagementStatus.approved
     engagement.approved_by = user.id
     engagement.approved_at = datetime.now(UTC)
+    await record_approval_decision(db, engagement, user)
     await AuditService.log(
         actor_id=user.id,
         action="engagement.approve",

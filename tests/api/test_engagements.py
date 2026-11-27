@@ -65,7 +65,14 @@ async def test_engagement_crud_and_scope_update(client, db_session):
 
 @pytest.mark.asyncio
 async def test_patch_approval_requires_admin_and_sets_audit_metadata(client, db_session):
-    from anomaly_core.models import AuditLog, Engagement, EngagementMember, EngagementMode
+    from anomaly_core.models import (
+        Approval,
+        ApprovalStatus,
+        AuditLog,
+        Engagement,
+        EngagementMember,
+        EngagementMode,
+    )
 
     admin_role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
     if admin_role is None:
@@ -138,3 +145,9 @@ async def test_patch_approval_requires_admin_and_sets_audit_metadata(client, db_
     )
     assert approval_log is not None
     assert (approval_log.metadata or {}).get("approver_id") == str(admin.id)
+
+    approval = await db_session.scalar(select(Approval).where(Approval.engagement_id == eng.id))
+    assert approval is not None
+    assert approval.status == ApprovalStatus.approved
+    assert approval.approver_id == admin.id
+    assert approval.decided_at is not None

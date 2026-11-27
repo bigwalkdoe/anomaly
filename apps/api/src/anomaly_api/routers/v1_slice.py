@@ -7,6 +7,7 @@ from uuid import UUID
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
 from anomaly_core.models import (
+    Approval,
     Engagement,
     EngagementMember,
     EngagementStatus,
@@ -22,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from anomaly_api.approvals import approval_response, record_approval_decision
 from anomaly_api.assessment import (
     enforce_assessment_policy,
     enqueue_assessment_run,
@@ -145,6 +147,7 @@ async def v1_approve_engagement(
     engagement.status = EngagementStatus.approved
     engagement.approved_by = user.id
     engagement.approved_at = datetime.now(UTC)
+    await record_approval_decision(db, engagement, user)
     await AuditService.log(
         actor_id=user.id,
         action="engagement.approve",
@@ -158,6 +161,26 @@ async def v1_approve_engagement(
     await db.commit()
     await db.refresh(engagement)
     return _envelope(request, EngagementResponse.model_validate(engagement).model_dump(mode="json"))
+
+
+@router.get("/engagements/{engagement_id}/approvals")
+async def v1_list_engagement_approvals(
+    request: Request,
+    engagement: Annotated[
+        Engagement,
+        Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester)),
+    ],
+    db: DbSession,
+):
+    approvals = (
+        await db.scalars(
+            select(Approval)
+            .where(Approval.engagement_id == engagement.id)
+            .where(child_organization_matches_engagement_sql(Approval))
+            .order_by(Approval.created_at.desc())
+        )
+    ).all()
+    return _envelope(request, [approval_response(approval) for approval in approvals])
 
 
 class V1RunCreate(BaseModel):
