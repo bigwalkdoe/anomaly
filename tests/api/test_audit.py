@@ -176,3 +176,72 @@ async def test_engagement_audit_rejects_client_viewer_member(client, db_session)
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_engagement_audit_hides_foreign_org_logs(client, db_session):
+    """The break: engagement audit reads trusted engagement_id over child org consistency."""
+    admin_role = await db_session.scalar(select(Role).where(Role.name == RoleName.admin))
+    if admin_role is None:
+        admin_role = Role(name=RoleName.admin, description="admin")
+        db_session.add(admin_role)
+        await db_session.flush()
+    admin = User(
+        email="audit-org-admin@example.com",
+        name="Admin",
+        password_hash=hash_password("pass"),
+        roles=[admin_role],
+    )
+    db_session.add(admin)
+    await db_session.flush()
+
+    org_a = Organization(name="Audit Consistency Org A", slug="audit-consistency-org-a")
+    org_b = Organization(name="Audit Consistency Org B", slug="audit-consistency-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org_a.id, role="owner"))
+    engagement = Engagement(
+        name="Audit Org Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org_a.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    db_session.add_all(
+        [
+            AuditLog(
+                actor_id=admin.id,
+                action="audit.consistent",
+                resource_type="test",
+                engagement_id=engagement.id,
+                organization_id=org_a.id,
+                metadata_={"marker": "consistent"},
+            ),
+            AuditLog(
+                actor_id=admin.id,
+                action="audit.foreign",
+                resource_type="test",
+                engagement_id=engagement.id,
+                organization_id=org_b.id,
+                metadata_={"marker": "foreign"},
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, ['admin'])}"}
+    scoped = await client.get(f"/api/audit?engagement_id={engagement.id}", headers=headers)
+    assert scoped.status_code == 200
+    markers = [entry["metadata"].get("marker") for entry in scoped.json()]
+    assert "consistent" in markers
+    assert "foreign" not in markers
+
+    glob = await client.get("/api/audit", headers=headers)
+    assert glob.status_code == 200
+    global_markers = [entry["metadata"].get("marker") for entry in glob.json()]
+    assert "consistent" in global_markers
+    assert "foreign" not in global_markers

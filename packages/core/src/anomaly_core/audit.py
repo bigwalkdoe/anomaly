@@ -42,9 +42,12 @@ async def get_audit_log(
     engagement_id: uuid.UUID | None = None,
     limit: int = 100,
     offset: int = 0,
+    extra_where: Any = None,
 ):
     stmt = select(AuditLog)
     if engagement_id is not None:
         stmt = stmt.where(AuditLog.engagement_id == engagement_id)
+    if extra_where is not None:
+        stmt = stmt.where(extra_where)
     stmt = stmt.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)
     return (await db.scalars(stmt)).all()

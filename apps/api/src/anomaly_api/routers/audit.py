@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, or_, select
 
 from anomaly_api.deps import CurrentUser, DbSession
+from anomaly_api.tenancy import child_organization_matches_engagement_sql
 
 router = APIRouter(prefix="/api", tags=["audit"])
 
@@ -35,7 +36,13 @@ async def list_audit(
         # boundary used by engagement run reads instead of allowing every client viewer.
         if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
             raise HTTPException(status_code=403, detail="Forbidden")
-        logs = await get_audit_log(db, engagement_id=engagement_id, limit=limit, offset=offset)
+        logs = await get_audit_log(
+            db,
+            engagement_id=engagement_id,
+            limit=limit,
+            offset=offset,
+            extra_where=child_organization_matches_engagement_sql(AuditLog),
+        )
     else:
         if not has_role(user, RoleName.admin):
             raise HTTPException(status_code=403, detail="Forbidden")
@@ -45,7 +52,13 @@ async def list_audit(
             )
         ).all()
         org_ids = [oid for oid in org_rows if oid is not None]
-        stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)
+        stmt = (
+            select(AuditLog)
+            .where(child_organization_matches_engagement_sql(AuditLog))
+            .order_by(AuditLog.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
         if org_ids:
             stmt = stmt.where(
                 or_(
