@@ -47,7 +47,7 @@
   - `hash_idempotency_key(key: str) -> str` — lowercase hex SHA-256 digest.
   - `Run.idempotency_key_hash: Mapped[str | None]`.
 
-- [ ] **Step 1: Write the failing pure tests**
+- [x] **Step 1: Write the failing pure tests**
 
 Create `tests/core/test_assessment_idempotency.py` with these tests:
 
@@ -85,12 +85,12 @@ def test_run_model_exposes_idempotency_hash():
     assert hasattr(Run, "idempotency_key_hash")
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `PYTHONPATH=packages/core/src .venv/bin/python -m pytest -q --noconftest tests/core/test_assessment_idempotency.py`
 Expected: FAIL with `ModuleNotFoundError: No module named 'anomaly_core.assessment_idempotency'` and missing `Run.idempotency_key_hash`.
 
-- [ ] **Step 3: Add the model field and unique constraint**
+- [x] **Step 3: Add the model field and unique constraint**
 
 In `packages/core/src/anomaly_core/models/run.py`, import `UniqueConstraint` and add:
 
@@ -107,7 +107,7 @@ __table_args__ = (
 
 Add `idempotency_key_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)` to `Run`. Keep all existing columns and relationships unchanged.
 
-- [ ] **Step 4: Add the additive migration**
+- [x] **Step 4: Add the additive migration**
 
 Create revision `b2c3d4e5f6a7`, `down_revision = "a1b2c3d4e5f6"`. The upgrade must:
 - add `runs.idempotency_key_hash` as nullable `String(64)` if absent;
@@ -115,24 +115,24 @@ Create revision `b2c3d4e5f6a7`, `down_revision = "a1b2c3d4e5f6"`. The upgrade mu
 
 The downgrade must drop that constraint (if present) and then drop the column (if present). Follow the idempotent inspector guards used in `f2a3b4c5d6e7_add_org_to_tags.py`.
 
-- [ ] **Step 5: Implement the pure helpers**
+- [x] **Step 5: Implement the pure helpers**
 
 In `packages/core/src/anomaly_core/assessment_idempotency.py`:
 - define `MAX_IDEMPOTENCY_KEY_LENGTH = 255` and `InvalidIdempotencyKey(ValueError)`;
 - implement `normalize_idempotency_key(raw: str | None) -> str | None` using `InvalidIdempotencyKey` for invalid non-absent values;
 - implement `hash_idempotency_key(key: str) -> str` with `hashlib.sha256(key.encode("utf-8")).hexdigest()`.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `PYTHONPATH=packages/core/src .venv/bin/python -m pytest -q --noconftest tests/core/test_assessment_idempotency.py`
 Expected: PASS (3 tests).
 
-- [ ] **Step 7: Verify the migration graph**
+- [x] **Step 7: Verify the migration graph**
 
 Run: `/home/deon/dev/github/anomaly/.venv/bin/alembic heads` from `packages/core`.
 Expected: exactly one head, `b2c3d4e5f6a7 (head)`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add packages/core/src/anomaly_core/models/run.py packages/core/alembic/versions/b2c3d4e5f6a7_add_run_idempotency_hash.py packages/core/src/anomaly_core/assessment_idempotency.py tests/core/test_assessment_idempotency.py
@@ -155,7 +155,7 @@ git commit -m "feat: persist assessment idempotency keys"
   - `enqueue_assessment_run(..., idempotency_key_hash: str | None = None)` stores the hash on the new `Run`.
   - `async def enqueue_assessment_run_with_idempotency(db: AsyncSession, *, user: User, engagement: Engagement, tool: str, targets: list[str], idempotency_key_hash: str | None, policy_decision: PolicyDecision, params: dict[str, Any] | None = None) -> IdempotentRunResult`
 
-- [ ] **Step 1: Write failing legacy API tests**
+- [x] **Step 1: Write failing legacy API tests**
 
 Create `tests/api/test_runs_idempotency.py`. Use a local `_seed_engagement(db, user_email)` helper that get-or-creates admin/pentester roles, creates owner and pentester users, an approved `Engagement`, `EngagementMember`, `Scope`, and one in-scope `ScopeEntry("allowed.test")`, commits, and returns `(pentester, engagement)`. Include these tests:
 
@@ -290,12 +290,12 @@ async def test_duplicate_race_reuses_existing_run(client, db_session, monkeypatc
     assert calls == 2
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `bash -c 'set -a; source .env; set +a; PYTHONPATH=apps/api/src:apps/worker/src:packages/core/src:packages/tools/src:packages/ai/src .venv/bin/python -m pytest -q tests/api/test_runs_idempotency.py'`
 Expected: FAIL because the idempotency helpers and `idempotent_replay` response field do not exist.
 
-- [ ] **Step 3: Implement shared helpers**
+- [x] **Step 3: Implement shared helpers**
 
 In `apps/api/src/anomaly_api/assessment.py`:
 - import `IntegrityError` from `sqlalchemy.exc`, `dataclass`, and the Task 1 helpers;
@@ -307,7 +307,7 @@ In `apps/api/src/anomaly_api/assessment.py`:
 
 When `idempotency_key_hash` is `None`, the wrapper must simply enqueue with no idempotency audit and return `replayed=False`.
 
-- [ ] **Step 4: Wire the legacy route**
+- [x] **Step 4: Wire the legacy route**
 
 In `apps/api/src/anomaly_api/routers/runs.py`:
 - add `Request` to imports and `request: Request` to `create_run`;
@@ -319,12 +319,12 @@ In `apps/api/src/anomaly_api/routers/runs.py`:
 
 Replay responses keep `202`; do not re-run `inline_execution_enabled()` on replay.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `bash -c 'set -a; source .env; set +a; PYTHONPATH=apps/api/src:apps/worker/src:packages/core/src:packages/tools/src:packages/ai/src .venv/bin/python -m pytest -q tests/api/test_runs_idempotency.py'`
 Expected: PASS (4 tests).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/api/src/anomaly_api/assessment.py apps/api/src/anomaly_api/routers/runs.py tests/api/test_runs_idempotency.py
@@ -341,7 +341,7 @@ git commit -m "feat: add legacy assessment idempotency"
 - Consumes: all helpers from Task 2.
 - Produces: no new public interfaces.
 
-- [ ] **Step 1: Write the failing v1 test**
+- [x] **Step 1: Write the failing v1 test**
 
 Append to `tests/api/test_runs_idempotency.py`:
 
@@ -367,12 +367,12 @@ async def test_v1_replay_reuses_run_in_envelope(client, db_session):
     assert len(runs) == 1
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bash -c 'set -a; source .env; set +a; PYTHONPATH=apps/api/src:apps/worker/src:packages/core/src:packages/tools/src:packages/ai/src .venv/bin/python -m pytest -q tests/api/test_runs_idempotency.py::test_v1_replay_reuses_run_in_envelope'`
 Expected: FAIL because v1 creates two runs and has no `idempotent_replay` field.
 
-- [ ] **Step 3: Wire the v1 route**
+- [x] **Step 3: Wire the v1 route**
 
 In `v1_create_run`, mirror the legacy flow using the shared helpers through the `assessment` module namespace:
 - normalize/hash the header before policy evaluation, translating `InvalidIdempotencyKey` to `HTTPException(status_code=400, detail=...)`;
@@ -381,12 +381,12 @@ In `v1_create_run`, mirror the legacy flow using the shared helpers through the 
 - include `idempotent_replay` in the `_envelope` data dict;
 - do not re-run inline execution on replay.
 
-- [ ] **Step 4: Run the idempotency tests to verify they pass**
+- [x] **Step 4: Run the idempotency tests to verify they pass**
 
 Run: `bash -c 'set -a; source .env; set +a; PYTHONPATH=apps/api/src:apps/worker/src:packages/core/src:packages/tools/src:packages/ai/src .venv/bin/python -m pytest -q tests/api/test_runs_idempotency.py'`
-Expected: PASS (5 tests).
+Expected: PASS (5 tests). Final self-review added a sixth regression test proving legacy race replays do not re-run inline execution.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/anomaly_api/routers/v1_slice.py tests/api/test_runs_idempotency.py
@@ -403,7 +403,7 @@ git commit -m "feat: add v1 assessment idempotency"
 - Consumes: completed implementation from Tasks 1–3.
 - Produces: updated progress ledger and verified integration.
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 ```bash
 set -a && source .env && set +a && PYTHONPATH=apps/api/src:apps/worker/src:apps/cli/src:packages/core/src:packages/tools/src:packages/ai/src:packages/reporting/src:packages/integrations/src:packages/common/src .venv/bin/python -m pytest -q tests/api tests/core tests/ai tests/tools tests/security
@@ -413,11 +413,11 @@ python3 -m mypy packages apps
 
 Expected: all tests pass; ruff clean; mypy clean.
 
-- [ ] **Step 2: Update progress documentation**
+- [x] **Step 2: Update progress documentation**
 
 Append a `TASKS.md` progress entry with the implementation summary and exact test/lint/type results. Record rulings and checklist completion in the SDD progress ledger.
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 ```bash
 git add TASKS.md docs/superpowers/specs/2026-11-28-assessment-request-idempotency-design.md docs/superpowers/plans/2026-11-28-assessment-request-idempotency.md
