@@ -17,7 +17,6 @@ from anomaly_core.models import (
     Run,
     Scope,
 )
-from anomaly_core.tenancy import get_or_create_default_organization
 from anomaly_reporting import ReportGenerator
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -33,7 +32,10 @@ from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.report_integrity import recorded_report_sha256, report_verification
 from anomaly_api.routers.auth import me as auth_me
 from anomaly_api.schemas.engagement import EngagementCreate, EngagementResponse
-from anomaly_api.tenancy import child_organization_matches_engagement
+from anomaly_api.tenancy import (
+    child_organization_matches_engagement,
+    resolve_creation_organization,
+)
 
 
 def _envelope(request: Request, data: Any) -> dict[str, Any]:
@@ -93,7 +95,7 @@ async def v1_list_engagements(
 async def v1_create_engagement(
     request: Request, payload: EngagementCreate, user: CurrentUser, db: DbSession
 ):
-    org = await get_or_create_default_organization(db, user)
+    org = await resolve_creation_organization(db, user, payload.organization_id)
     from anomaly_core.models import EngagementMode
 
     engagement = Engagement(

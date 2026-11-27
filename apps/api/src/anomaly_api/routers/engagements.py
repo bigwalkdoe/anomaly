@@ -17,7 +17,7 @@ from anomaly_core.models import (
     TargetType,
 )
 from anomaly_core.rbac import engagement_accessible
-from anomaly_core.tenancy import get_or_create_default_organization, get_user_memberships
+from anomaly_core.tenancy import get_user_memberships
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
@@ -30,6 +30,7 @@ from anomaly_api.schemas.engagement import (
     TargetCreate,
     TargetResponse,
 )
+from anomaly_api.tenancy import resolve_creation_organization
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -65,7 +66,7 @@ async def list_engagements(user: CurrentUser, db: DbSession, limit: int = 100, o
 
 @router.post("", response_model=EngagementResponse, status_code=status.HTTP_201_CREATED)
 async def create_engagement(payload: EngagementCreate, user: CurrentUser, db: DbSession):
-    org = await get_or_create_default_organization(db, user)
+    org = await resolve_creation_organization(db, user, payload.organization_id)
     engagement = Engagement(
         name=payload.name,
         mode=EngagementMode(payload.mode),

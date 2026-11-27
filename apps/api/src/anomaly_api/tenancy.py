@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
+
+from anomaly_core.models import Organization, User
+from anomaly_core.tenancy import get_or_create_default_organization, get_user_memberships
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def child_organization_matches_engagement(child: Any, engagement: Any) -> bool:
@@ -15,3 +21,20 @@ def child_organization_matches_engagement(child: Any, engagement: Any) -> bool:
     if child_org is None or engagement_org is None:
         return True
     return child_org == engagement_org
+
+
+async def resolve_creation_organization(
+    db: AsyncSession, user: User, requested_org_id: UUID | None
+) -> Organization:
+    """Resolve the org for a new resource, rejecting orgs the caller is not a member of."""
+    if requested_org_id is None:
+        return await get_or_create_default_organization(db, user)
+
+    memberships = await get_user_memberships(db, user)
+    allowed = {m.organization_id for m in memberships if m.organization_id is not None}
+    if requested_org_id not in allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    org = await db.get(Organization, requested_org_id)
+    if org is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return org

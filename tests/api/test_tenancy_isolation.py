@@ -828,6 +828,72 @@ async def test_cross_tenant_aggregate_endpoints_do_not_leak(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_engagement_create_validates_requested_organization(client, db_session):
+    single = await _seed(db_session, "create-org-single@example.com", RoleName.admin)
+    multi = await _seed(db_session, "create-org-multi@example.com", RoleName.admin)
+    owner_b = await _seed(db_session, "create-org-owner-b@example.com", RoleName.admin)
+    org_a = Organization(name="Create Org A", slug="create-org-a")
+    org_b = Organization(name="Create Org B", slug="create-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=single.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=multi.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=multi.id, organization_id=org_b.id, role="member"))
+    db_session.add(Membership(user_id=owner_b.id, organization_id=org_b.id, role="owner"))
+    await db_session.commit()
+
+    headers_single = {
+        "Authorization": f"Bearer {create_access_token(single.id, [RoleName.admin.value])}"
+    }
+    headers_multi = {
+        "Authorization": f"Bearer {create_access_token(multi.id, [RoleName.admin.value])}"
+    }
+
+    for path in ("/api/engagements", "/api/v1/engagements"):
+        r = await client.post(
+            path,
+            headers=headers_single,
+            json={
+                "name": "Foreign Create",
+                "mode": "own_infra",
+                "organization_id": str(org_b.id),
+            },
+        )
+        assert r.status_code == 403, path
+
+    count = await db_session.scalar(
+        select(__import__("sqlalchemy").func.count(Engagement.id)).where(
+            Engagement.name == "Foreign Create"
+        )
+    )
+    assert count == 0
+
+    r = await client.post(
+        "/api/engagements",
+        headers=headers_multi,
+        json={
+            "name": "Chosen Create",
+            "mode": "own_infra",
+            "organization_id": str(org_b.id),
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["organization_id"] == str(org_b.id)
+
+    r = await client.post(
+        "/api/v1/engagements",
+        headers=headers_multi,
+        json={
+            "name": "Chosen V1 Create",
+            "mode": "own_infra",
+            "organization_id": str(org_b.id),
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["data"]["organization_id"] == str(org_b.id)
+
+
+@pytest.mark.asyncio
 async def test_tags_are_org_scoped(client, db_session):
     admin_a = await _seed(db_session, "tag-a@example.com", RoleName.admin)
     admin_b = await _seed(db_session, "tag-b@example.com", RoleName.admin)
