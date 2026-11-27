@@ -23,7 +23,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from anomaly_api.approvals import approval_response, record_approval_decision
+from anomaly_api.approvals import (
+    ApprovalDecision,
+    approval_response,
+    record_approval_decision,
+    record_approval_rejection,
+)
 from anomaly_api.assessment import (
     enforce_assessment_policy,
     enqueue_assessment_run,
@@ -156,6 +161,36 @@ async def v1_approve_engagement(
         engagement_id=engagement.id,
         organization_id=getattr(engagement, "organization_id", None),
         metadata={"approver_id": str(user.id), "status": engagement.status.value},
+        db=db,
+    )
+    await db.commit()
+    await db.refresh(engagement)
+    return _envelope(request, EngagementResponse.model_validate(engagement).model_dump(mode="json"))
+
+
+@router.post("/engagements/{engagement_id}/reject")
+async def v1_reject_engagement(
+    request: Request,
+    engagement: Annotated[
+        Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.admin))
+    ],
+    user: CurrentUser,
+    db: DbSession,
+    payload: ApprovalDecision | None = None,
+):
+    if engagement.status != EngagementStatus.pending_approval:
+        raise HTTPException(status_code=409, detail="Engagement not in pending approval state")
+    reason = payload.reason if payload else None
+    engagement.status = EngagementStatus.draft
+    await record_approval_rejection(db, engagement, user, reason)
+    await AuditService.log(
+        actor_id=user.id,
+        action="engagement.reject",
+        resource_type="engagement",
+        resource_id=engagement.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={"approver_id": str(user.id), "status": engagement.status.value, "reason": reason},
         db=db,
     )
     await db.commit()

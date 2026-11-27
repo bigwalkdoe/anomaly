@@ -1268,3 +1268,195 @@ async def test_approval_read_no_leak_for_cross_tenant_and_viewer(client, db_sess
         assert viewer_read.status_code == 403, path
         allowed = await client.get(path, headers=headers_admin)
         assert allowed.status_code == 200, path
+
+
+@pytest.mark.asyncio
+async def test_governed_rejection_records_decision_and_returns_to_draft(client, db_session):
+    from anomaly_core.models import Approval, ApprovalStatus
+
+    admin = await _seed(db_session, "approval-reject-admin@example.com", RoleName.admin)
+    org = Organization(name="Approval Reject Org", slug="approval-reject-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org.id, role="owner"))
+    engagement = Engagement(
+        name="Approval Reject Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, [RoleName.admin.value])}"}
+    submitted = await client.post(f"/api/engagements/{engagement.id}/submit", headers=headers)
+    assert submitted.status_code == 200
+
+    rejected = await client.post(
+        f"/api/engagements/{engagement.id}/reject",
+        headers=headers,
+        json={"reason": "Scope incomplete"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "draft"
+
+    approval = await db_session.scalar(
+        select(Approval).where(Approval.engagement_id == engagement.id)
+    )
+    assert approval is not None
+    assert approval.status == ApprovalStatus.rejected
+    assert approval.approver_id == admin.id
+    assert approval.decided_at is not None
+    assert approval.reason == "Scope incomplete"
+
+    listing = await client.get(f"/api/engagements/{engagement.id}/approvals", headers=headers)
+    assert listing.status_code == 200
+    assert len(listing.json()) == 1
+    assert listing.json()[0]["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_v1_reject_records_decision(client, db_session):
+    from anomaly_core.models import Approval, ApprovalStatus
+
+    admin = await _seed(db_session, "v1-approval-reject-admin@example.com", RoleName.admin)
+    org = Organization(name="V1 Approval Reject Org", slug="v1-approval-reject-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org.id, role="owner"))
+    engagement = Engagement(
+        name="V1 Approval Reject Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, [RoleName.admin.value])}"}
+    submitted = await client.post(f"/api/engagements/{engagement.id}/submit", headers=headers)
+    assert submitted.status_code == 200
+
+    rejected = await client.post(
+        f"/api/v1/engagements/{engagement.id}/reject",
+        headers=headers,
+        json={"reason": "V1 rejection"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["data"]["status"] == "draft"
+
+    approval = await db_session.scalar(
+        select(Approval).where(Approval.engagement_id == engagement.id)
+    )
+    assert approval is not None
+    assert approval.status == ApprovalStatus.rejected
+    assert approval.reason == "V1 rejection"
+    assert approval.approver_id == admin.id
+
+
+@pytest.mark.asyncio
+async def test_reject_enforces_admin_and_cross_tenant_no_leak(client, db_session):
+    from anomaly_core.models import Approval, ApprovalStatus, EngagementStatus
+
+    admin = await _seed(db_session, "reject-access-admin@example.com", RoleName.admin)
+    other = await _seed(db_session, "reject-access-other@example.com", RoleName.admin)
+    pentester = await _seed(db_session, "reject-access-pentester@example.com", RoleName.pentester)
+    viewer = await _seed(db_session, "reject-access-viewer@example.com", RoleName.client_viewer)
+    org_a = Organization(name="Reject Access Org A", slug="reject-access-org-a")
+    org_b = Organization(name="Reject Access Org B", slug="reject-access-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=other.id, organization_id=org_b.id, role="owner"))
+    db_session.add(Membership(user_id=pentester.id, organization_id=org_a.id, role="member"))
+    db_session.add(Membership(user_id=viewer.id, organization_id=org_a.id, role="member"))
+    engagement = Engagement(
+        name="Reject Access Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org_a.id,
+        status=EngagementStatus.pending_approval,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=pentester.id, role=RoleName.pentester)
+    )
+    db_session.add(
+        EngagementMember(
+            engagement_id=engagement.id, user_id=viewer.id, role=RoleName.client_viewer
+        )
+    )
+    db_session.add(
+        Approval(
+            organization_id=org_a.id,
+            engagement_id=engagement.id,
+            resource_type="engagement",
+            resource_id=engagement.id,
+            requester_id=admin.id,
+            status=ApprovalStatus.pending,
+        )
+    )
+    await db_session.commit()
+
+    path = f"/api/engagements/{engagement.id}/reject"
+    headers_other = {"Authorization": f"Bearer {create_access_token(other.id, ['admin'])}"}
+    headers_pentester = {
+        "Authorization": f"Bearer {create_access_token(pentester.id, ['pentester'])}"
+    }
+    headers_viewer = {
+        "Authorization": f"Bearer {create_access_token(viewer.id, ['client_viewer'])}"
+    }
+    headers_admin = {"Authorization": f"Bearer {create_access_token(admin.id, ['admin'])}"}
+
+    cross_tenant = await client.post(path, headers=headers_other, json={})
+    assert cross_tenant.status_code == 404
+    pentester_reject = await client.post(path, headers=headers_pentester, json={})
+    assert pentester_reject.status_code == 403
+    viewer_reject = await client.post(path, headers=headers_viewer, json={})
+    assert viewer_reject.status_code == 403
+
+    allowed = await client.post(path, headers=headers_admin, json={"reason": "Denied"})
+    assert allowed.status_code == 200
+    assert allowed.json()["status"] == "draft"
+
+
+@pytest.mark.asyncio
+async def test_reject_requires_pending_approval(client, db_session):
+    from anomaly_core.models import EngagementStatus
+
+    admin = await _seed(db_session, "reject-state-admin@example.com", RoleName.admin)
+    org = Organization(name="Reject State Org", slug="reject-state-org")
+    db_session.add(org)
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org.id, role="owner"))
+    engagement = Engagement(
+        name="Reject State Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org.id,
+        status=EngagementStatus.draft,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, ['admin'])}"}
+    rejected = await client.post(
+        f"/api/engagements/{engagement.id}/reject", headers=headers, json={}
+    )
+    assert rejected.status_code == 409

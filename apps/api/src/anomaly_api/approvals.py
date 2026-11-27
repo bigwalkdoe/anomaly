@@ -4,10 +4,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 from anomaly_core.models import Approval, ApprovalStatus, Engagement, User
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 APPROVAL_RESOURCE_TYPE = "engagement"
+
+
+class ApprovalDecision(BaseModel):
+    reason: str | None = Field(default=None, max_length=1000)
 
 
 async def record_approval_request(
@@ -48,6 +53,42 @@ async def record_approval_decision(
     approval.status = ApprovalStatus.approved
     approval.approver_id = approver.id
     approval.decided_at = datetime.now(UTC)
+    await db.flush()
+    return approval
+
+
+async def record_approval_rejection(
+    db: AsyncSession, engagement: Engagement, approver: User, reason: str | None = None
+) -> Approval:
+    """Record a rejected governance decision, including legacy rows without a pending record."""
+    approval = await db.scalar(
+        select(Approval)
+        .where(
+            Approval.engagement_id == engagement.id,
+            Approval.resource_type == APPROVAL_RESOURCE_TYPE,
+            Approval.resource_id == engagement.id,
+            Approval.status == ApprovalStatus.pending,
+        )
+        .order_by(Approval.created_at.desc())
+    )
+    if approval is None:
+        approval = Approval(
+            organization_id=engagement.organization_id,
+            engagement_id=engagement.id,
+            resource_type=APPROVAL_RESOURCE_TYPE,
+            resource_id=engagement.id,
+            requester_id=engagement.owner_id,
+            approver_id=approver.id,
+            status=ApprovalStatus.rejected,
+            reason=reason,
+            decided_at=datetime.now(UTC),
+        )
+        db.add(approval)
+    else:
+        approval.status = ApprovalStatus.rejected
+        approval.approver_id = approver.id
+        approval.reason = reason
+        approval.decided_at = datetime.now(UTC)
     await db.flush()
     return approval
 
