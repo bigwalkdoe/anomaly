@@ -17,6 +17,10 @@ from anomaly_api.assessment import (
 )
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
+from anomaly_api.tenancy import (
+    child_organization_matches_engagement,
+    child_organization_matches_engagement_sql,
+)
 
 router = APIRouter(tags=["runs"])
 
@@ -42,7 +46,13 @@ async def list_runs(
     ],
     db: DbSession,
 ):
-    runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement.id))).all()
+    runs = (
+        await db.scalars(
+            select(Run)
+            .where(Run.engagement_id == engagement.id)
+            .where(child_organization_matches_engagement_sql(Run))
+        )
+    ).all()
     return [RunResponse.model_validate(r) for r in runs]
 
 
@@ -94,12 +104,14 @@ async def get_run(run_id: str, user: CurrentUser, db: DbSession):
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     engagement = await db.get(Engagement, run.engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Run not found")
     from anomaly_core.rbac import engagement_accessible
 
-    # Hide existence from non-members/cross-tenant callers.
-    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+    # Hide existence from non-members, cross-tenant callers, and mismatched child orgs.
+    if (
+        engagement is None
+        or not child_organization_matches_engagement(run, engagement)
+        or not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer)
+    ):
         raise HTTPException(status_code=404, detail="Run not found")
     # Runs are not readable by client_viewer members.
     if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):

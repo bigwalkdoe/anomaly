@@ -13,6 +13,10 @@ from sqlalchemy import select
 
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
+from anomaly_api.tenancy import (
+    child_organization_matches_engagement,
+    child_organization_matches_engagement_sql,
+)
 
 router = APIRouter(tags=["findings"])
 
@@ -52,7 +56,11 @@ async def list_findings(
     db: DbSession,
 ):
     findings = (
-        await db.scalars(select(Finding).where(Finding.engagement_id == engagement.id))
+        await db.scalars(
+            select(Finding)
+            .where(Finding.engagement_id == engagement.id)
+            .where(child_organization_matches_engagement_sql(Finding))
+        )
     ).all()
     return [FindingResponse.model_validate(f) for f in findings]
 
@@ -101,10 +109,11 @@ async def get_finding(finding_id: UUID, user: CurrentUser, db: DbSession):
     if finding is None:
         raise HTTPException(status_code=404, detail="Finding not found")
     engagement = await db.get(Engagement, finding.engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Finding not found")
-    # Hide existence from non-members/cross-tenant callers.
-    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+    if (
+        engagement is None
+        or not child_organization_matches_engagement(finding, engagement)
+        or not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer)
+    ):
         raise HTTPException(status_code=404, detail="Finding not found")
     return FindingResponse.model_validate(finding)
 
@@ -116,10 +125,11 @@ async def _require_finding_mutation_access(
     if finding is None:
         raise HTTPException(status_code=404, detail="Finding not found")
     engagement = await db.get(Engagement, finding.engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Finding not found")
-    # Hide existence from non-members/cross-tenant callers.
-    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+    if (
+        engagement is None
+        or not child_organization_matches_engagement(finding, engagement)
+        or not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer)
+    ):
         raise HTTPException(status_code=404, detail="Finding not found")
     # Known/accessible finding but insufficient role for mutation.
     if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):

@@ -34,6 +34,7 @@ from anomaly_api.routers.auth import me as auth_me
 from anomaly_api.schemas.engagement import EngagementCreate, EngagementResponse
 from anomaly_api.tenancy import (
     child_organization_matches_engagement,
+    child_organization_matches_engagement_sql,
     resolve_creation_organization,
 )
 
@@ -213,12 +214,14 @@ async def v1_get_run(request: Request, run_id: UUID, user: CurrentUser, db: DbSe
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
     engagement = await db.get(Engagement, run.engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Run not found")
     from anomaly_core.rbac import engagement_accessible
 
-    # Hide existence from non-members/cross-tenant callers.
-    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+    # Hide existence from non-members, cross-tenant callers, and mismatched child orgs.
+    if (
+        engagement is None
+        or not child_organization_matches_engagement(run, engagement)
+        or not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer)
+    ):
         raise HTTPException(status_code=404, detail="Run not found")
     # Runs are not readable by client_viewer members.
     if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
@@ -352,9 +355,19 @@ async def _generate_report_for_engagement(
     if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):
         raise HTTPException(status_code=403, detail="Forbidden")
     findings = (
-        await db.scalars(select(Finding).where(Finding.engagement_id == engagement_id))
+        await db.scalars(
+            select(Finding)
+            .where(Finding.engagement_id == engagement_id)
+            .where(child_organization_matches_engagement_sql(Finding))
+        )
     ).all()
-    runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement_id))).all()
+    runs = (
+        await db.scalars(
+            select(Run)
+            .where(Run.engagement_id == engagement_id)
+            .where(child_organization_matches_engagement_sql(Run))
+        )
+    ).all()
     evidence_rows = (
         await db.scalars(select(Evidence).where(Evidence.engagement_id == engagement_id))
     ).all()
@@ -365,6 +378,9 @@ async def _generate_report_for_engagement(
             if run_ids
             else []
         )
+    evidence_rows = [
+        e for e in evidence_rows if child_organization_matches_engagement(e, engagement)
+    ]
     findings_data = [
         {
             "title": f.title,

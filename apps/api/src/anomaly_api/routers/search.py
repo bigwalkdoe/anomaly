@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import or_, select
 
 from anomaly_api.deps import CurrentUser, DbSession
+from anomaly_api.tenancy import child_organization_matches_engagement_sql
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -19,7 +20,7 @@ async def search(user: CurrentUser, db: DbSession, q: str = Query(..., min_lengt
     eng_q = select(Engagement).where(Engagement.name.ilike(f"%{q}%"))
     finding_q = select(Finding).where(
         or_(Finding.title.ilike(f"%{q}%"), Finding.description.ilike(f"%{q}%"))
-    )
+    ).where(child_organization_matches_engagement_sql(Finding))
     if allowed is not None:
         eng_q = eng_q.where(Engagement.id.in_(allowed))
         finding_q = finding_q.where(Finding.engagement_id.in_(allowed))

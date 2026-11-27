@@ -9,6 +9,7 @@ from anomaly_core.rbac import engagement_accessible
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from anomaly_api.deps import CurrentUser, DbSession
+from anomaly_api.tenancy import child_organization_matches_engagement
 
 router = APIRouter(tags=["websocket"])
 
@@ -117,9 +118,13 @@ async def run_websocket(
             await websocket.close(code=4404, reason="Run not found")
             return
         engagement = await db.get(Engagement, run.engagement_id)
-        # Hide existence for inaccessible/cross-tenant runs.
-        if engagement is None or not await engagement_accessible(
-            db, user, engagement, min_role=RoleName.client_viewer
+        # Hide existence for inaccessible/cross-tenant/mismatched-org runs.
+        if (
+            engagement is None
+            or not child_organization_matches_engagement(run, engagement)
+            or not await engagement_accessible(
+                db, user, engagement, min_role=RoleName.client_viewer
+            )
         ):
             await websocket.close(code=4404, reason="Run not found")
             return
@@ -147,10 +152,12 @@ async def run_ws_status(run_id: str, user: CurrentUser, db: DbSession):
     if run is None:
         return {"active": False, "connection_count": 0}
     engagement = await db.get(Engagement, run.engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail="Run not found")
-    # Hide existence from non-members/cross-tenant callers.
-    if not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer):
+    # Hide existence from non-members, cross-tenant callers, and mismatched child orgs.
+    if (
+        engagement is None
+        or not child_organization_matches_engagement(run, engagement)
+        or not await engagement_accessible(db, user, engagement, min_role=RoleName.client_viewer)
+    ):
         raise HTTPException(status_code=404, detail="Run not found")
     # Runs are not readable by client_viewer members.
     if not await engagement_accessible(db, user, engagement, min_role=RoleName.pentester):

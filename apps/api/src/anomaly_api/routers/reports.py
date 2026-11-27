@@ -21,7 +21,10 @@ from sqlalchemy import func, select
 
 from anomaly_api.deps import CurrentUser, DbSession
 from anomaly_api.report_integrity import recorded_report_sha256, report_verification
-from anomaly_api.tenancy import child_organization_matches_engagement
+from anomaly_api.tenancy import (
+    child_organization_matches_engagement,
+    child_organization_matches_engagement_sql,
+)
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -129,9 +132,19 @@ async def generate_report(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     findings = (
-        await db.scalars(select(Finding).where(Finding.engagement_id == engagement_id))
+        await db.scalars(
+            select(Finding)
+            .where(Finding.engagement_id == engagement_id)
+            .where(child_organization_matches_engagement_sql(Finding))
+        )
     ).all()
-    runs = (await db.scalars(select(Run).where(Run.engagement_id == engagement_id))).all()
+    runs = (
+        await db.scalars(
+            select(Run)
+            .where(Run.engagement_id == engagement_id)
+            .where(child_organization_matches_engagement_sql(Run))
+        )
+    ).all()
     evidence_rows = (
         await db.scalars(select(Evidence).where(Evidence.engagement_id == engagement_id))
     ).all()
@@ -142,6 +155,9 @@ async def generate_report(
             if run_ids
             else []
         )
+    evidence_rows = [
+        e for e in evidence_rows if child_organization_matches_engagement(e, engagement)
+    ]
 
     findings_data = [
         {

@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import func, select
 
 from anomaly_api.deps import CurrentUser, DbSession
+from anomaly_api.tenancy import child_organization_matches_engagement_sql
 
 router = APIRouter(prefix="/api/vulnerabilities", tags=["vulnerabilities"])
 
@@ -17,7 +18,9 @@ async def summary(user: CurrentUser, db: DbSession):
         return {"total": 0, "critical": 0, "high": 0, "medium": 0, "low": 0}
 
     def _q(severity: FindingSeverity | None = None):
-        q = select(func.count(Finding.id))
+        q = select(func.count(Finding.id)).where(
+            child_organization_matches_engagement_sql(Finding)
+        )
         if severity is not None:
             q = q.where(Finding.severity == severity)
         if allowed is not None:

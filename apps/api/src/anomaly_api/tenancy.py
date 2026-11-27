@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from anomaly_core.models import Organization, User
+from anomaly_core.models import Engagement, Organization, User
 from anomaly_core.tenancy import get_or_create_default_organization, get_user_memberships
 from fastapi import HTTPException
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -21,6 +22,20 @@ def child_organization_matches_engagement(child: Any, engagement: Any) -> bool:
     if child_org is None or engagement_org is None:
         return True
     return child_org == engagement_org
+
+
+def child_organization_matches_engagement_sql(child_cls: Any) -> Any:
+    """SQL predicate equivalent of the org-consistency check for engagement children."""
+    engagement_org = (
+        select(Engagement.organization_id)
+        .where(Engagement.id == child_cls.engagement_id)
+        .scalar_subquery()
+    )
+    return or_(
+        child_cls.organization_id.is_(None),
+        engagement_org.is_(None),
+        child_cls.organization_id == engagement_org,
+    )
 
 
 async def resolve_creation_organization(

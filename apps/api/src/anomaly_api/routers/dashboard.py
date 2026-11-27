@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import func, select
 
 from anomaly_api.deps import CurrentUser, DbSession
+from anomaly_api.tenancy import child_organization_matches_engagement_sql
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -20,10 +21,14 @@ async def get_dashboard(user: CurrentUser, db: DbSession):
         }
 
     eng_q = select(func.count(Engagement.id))
-    finding_q = select(func.count(Finding.id))
-    run_q = select(func.count(Run.id))
+    finding_q = select(func.count(Finding.id)).where(
+        child_organization_matches_engagement_sql(Finding)
+    )
+    run_q = select(func.count(Run.id)).where(child_organization_matches_engagement_sql(Run))
     crit_q = select(func.count(Finding.id)).where(Finding.severity == "critical")
+    crit_q = crit_q.where(child_organization_matches_engagement_sql(Finding))
     high_q = select(func.count(Finding.id)).where(Finding.severity == "high")
+    high_q = high_q.where(child_organization_matches_engagement_sql(Finding))
     if allowed is not None:
         eng_q = eng_q.where(Engagement.id.in_(allowed))
         finding_q = finding_q.where(Finding.engagement_id.in_(allowed))

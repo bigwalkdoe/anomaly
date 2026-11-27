@@ -828,6 +828,139 @@ async def test_cross_tenant_aggregate_endpoints_do_not_leak(client, db_session):
 
 
 @pytest.mark.asyncio
+async def test_finding_and_run_org_mismatch_is_hidden_everywhere(client, db_session):
+    """Child org consistency must hold for findings/runs and their aggregates."""
+    from anomaly_core.models import (
+        Finding,
+        FindingSeverity,
+        FindingStatus,
+        Run,
+        RunStatus,
+    )
+
+    admin = await _seed(db_session, "fr-org-a@example.com", RoleName.admin)
+    other = await _seed(db_session, "fr-org-b@example.com", RoleName.admin)
+    org_a = Organization(name="Finding Run Org A", slug="finding-run-org-a")
+    org_b = Organization(name="Finding Run Org B", slug="finding-run-org-b")
+    db_session.add_all([org_a, org_b])
+    await db_session.flush()
+    db_session.add(Membership(user_id=admin.id, organization_id=org_a.id, role="owner"))
+    db_session.add(Membership(user_id=other.id, organization_id=org_b.id, role="owner"))
+
+    engagement = Engagement(
+        name="Finding Run Org Engagement",
+        mode=EngagementMode.own_infra,
+        owner_id=admin.id,
+        organization_id=org_a.id,
+    )
+    db_session.add(engagement)
+    await db_session.flush()
+    db_session.add(
+        EngagementMember(engagement_id=engagement.id, user_id=admin.id, role=RoleName.admin)
+    )
+
+    consistent_finding = Finding(
+        organization_id=org_a.id,
+        engagement_id=engagement.id,
+        title="ConsistentRunFinding",
+        severity=FindingSeverity.medium,
+        status=FindingStatus.new,
+        description="consistent",
+        reporter_id=admin.id,
+        fingerprint="fr-consistent",
+    )
+    mismatched_finding = Finding(
+        organization_id=org_b.id,
+        engagement_id=engagement.id,
+        title="ForeignRunFinding",
+        severity=FindingSeverity.medium,
+        status=FindingStatus.new,
+        description="foreign secret",
+        reporter_id=admin.id,
+        fingerprint="fr-foreign",
+    )
+    consistent_run = Run(
+        organization_id=org_a.id,
+        engagement_id=engagement.id,
+        user_id=admin.id,
+        tool="nmap",
+        status=RunStatus.succeeded,
+        target_ids=[],
+        params={},
+    )
+    mismatched_run = Run(
+        organization_id=org_b.id,
+        engagement_id=engagement.id,
+        user_id=admin.id,
+        tool="nmap",
+        status=RunStatus.succeeded,
+        target_ids=[],
+        params={},
+    )
+    db_session.add_all(
+        [consistent_finding, mismatched_finding, consistent_run, mismatched_run]
+    )
+    await db_session.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, [RoleName.admin.value])}"}
+
+    for path in (
+        f"/api/findings/{mismatched_finding.id}",
+        f"/api/runs/{mismatched_run.id}",
+        f"/api/v1/runs/{mismatched_run.id}",
+        f"/api/ws/runs/{mismatched_run.id}/status",
+    ):
+        r = await client.get(path, headers=headers)
+        assert r.status_code == 404, path
+
+    r = await client.patch(
+        f"/api/findings/{mismatched_finding.id}",
+        headers=headers,
+        json={"title": "Tampered"},
+    )
+    assert r.status_code == 404
+
+    r = await client.get(f"/api/engagements/{engagement.id}/findings", headers=headers)
+    assert r.status_code == 200
+    assert [f["id"] for f in r.json()] == [str(consistent_finding.id)]
+
+    r = await client.get(f"/api/engagements/{engagement.id}/runs", headers=headers)
+    assert r.status_code == 200
+    assert [run["id"] for run in r.json()] == [str(consistent_run.id)]
+
+    r = await client.get("/api/search?q=RunFinding", headers=headers)
+    assert r.status_code == 200
+    finding_ids = [f["id"] for f in r.json()["findings"]]
+    assert str(consistent_finding.id) in finding_ids
+    assert str(mismatched_finding.id) not in finding_ids
+
+    for path in ("/api/stats", "/api/dashboard"):
+        r = await client.get(path, headers=headers)
+        assert r.status_code == 200
+        overview = r.json().get("overview", r.json())
+        assert overview["findings"] == 1
+        assert overview["runs"] == 1
+
+    r = await client.get("/api/vulnerabilities/summary", headers=headers)
+    assert r.status_code == 200
+    assert r.json()["total"] == 1
+
+    for path, method in (
+        (f"/api/reports/engagements/{engagement.id}/generate?format=markdown", "GET"),
+        (f"/api/v1/engagements/{engagement.id}/reports/generate?format=markdown", "GET"),
+    ):
+        r = (
+            await client.get(path, headers=headers)
+            if method == "GET"
+            else await client.post(path, headers=headers)
+        )
+        assert r.status_code == 200, path
+        content = r.json().get("content") or r.json().get("data", {}).get("content", "")
+        assert "ConsistentRunFinding" in content
+        assert "ForeignRunFinding" not in content
+
+
+@pytest.mark.asyncio
 async def test_engagement_create_validates_requested_organization(client, db_session):
     single = await _seed(db_session, "create-org-single@example.com", RoleName.admin)
     multi = await _seed(db_session, "create-org-multi@example.com", RoleName.admin)
