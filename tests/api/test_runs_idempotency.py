@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import anomaly_api.assessment
+import anomaly_worker.executor
 import pytest
 from anomaly_core.auth import create_access_token, hash_password
 from anomaly_core.models import (
@@ -204,6 +205,53 @@ async def test_duplicate_race_reuses_existing_run(client, db_session, monkeypatc
     assert replay.json()["id"] == str(existing.id)
     assert replay.json()["idempotent_replay"] is True
     assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_legacy_race_replay_does_not_reexecute_inline(client, db_session, monkeypatch):
+    pt, eng = await _seed_engagement(db_session, "legacy-race-inline@example.com")
+    key_hash = "4d29eedd8ea2a2b0b477fa964e3edf9a52b7b5e2bf18d2c6fcadf83069125071"
+    headers = {
+        "Authorization": f"Bearer {create_access_token(pt.id, ['pentester'])}",
+        "Idempotency-Key": "race-inline-key",
+    }
+    executions: list[object] = []
+
+    async def fake_execute_run(db, run_id):
+        executions.append(run_id)
+
+    monkeypatch.setenv("RUNNER_MODE", "inline")
+    monkeypatch.setattr(anomaly_worker.executor, "execute_run", fake_execute_run)
+
+    first = await client.post(
+        f"/api/engagements/{eng.id}/runs",
+        headers=headers,
+        json={"tool": "stub", "targets": ["allowed.test"]},
+    )
+    existing = await db_session.scalar(
+        select(Run).where(Run.idempotency_key_hash == key_hash)
+    )
+    real_find = anomaly_api.assessment.find_idempotent_run
+    calls = 0
+
+    async def miss_then_find(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return None if calls == 1 else await real_find(*args, **kwargs)
+
+    monkeypatch.setattr(anomaly_api.assessment, "find_idempotent_run", miss_then_find)
+
+    replay = await client.post(
+        f"/api/engagements/{eng.id}/runs",
+        headers=headers,
+        json={"tool": "stub", "targets": ["allowed.test"]},
+    )
+
+    assert first.status_code == 202
+    assert replay.status_code == 202
+    assert replay.json()["idempotent_replay"] is True
+    assert calls == 2
+    assert executions == [existing.id]
 
 
 @pytest.mark.asyncio

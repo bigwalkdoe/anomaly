@@ -102,7 +102,7 @@ async def create_run(
     )
     run = result.run
 
-    if assessment.inline_execution_enabled():
+    if not result.replayed and assessment.inline_execution_enabled():
         try:
             from anomaly_worker.executor import execute_run
 
