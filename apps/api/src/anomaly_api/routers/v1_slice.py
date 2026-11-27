@@ -4,6 +4,7 @@ import hashlib
 from typing import Annotated, Any
 from uuid import UUID
 
+from anomaly_core.assessment_idempotency import InvalidIdempotencyKey
 from anomaly_core.audit import AuditService
 from anomaly_core.db import SessionLocal
 from anomaly_core.models import (
@@ -23,17 +24,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
+from anomaly_api import assessment
 from anomaly_api.approvals import (
     ApprovalDecision,
     approval_response,
     record_approval_decision,
     record_approval_rejection,
-)
-from anomaly_api.assessment import (
-    enforce_assessment_policy,
-    enqueue_assessment_run,
-    inline_execution_enabled,
-    load_engagement_with_scope,
 )
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.report_integrity import recorded_report_sha256, report_verification
@@ -238,13 +234,36 @@ async def v1_create_run(
     user: CurrentUser,
     db: DbSession,
 ):
+    try:
+        key_hash = assessment.parse_idempotency_key(request.headers.get("idempotency-key"))
+    except InvalidIdempotencyKey as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if key_hash is not None:
+        existing = await assessment.find_idempotent_run(
+            db, engagement_id=engagement.id, user_id=user.id, key_hash=key_hash
+        )
+        if existing is not None:
+            await assessment.record_idempotent_replay(
+                db, user=user, engagement=engagement, run=existing, key_hash=key_hash
+            )
+            return _envelope(
+                request,
+                {
+                    "id": str(existing.id),
+                    "status": existing.status.value,
+                    "scope_warning": existing.scope_warning,
+                    "idempotent_replay": True,
+                },
+            )
+
     targets = list(payload.targets or [])
-    eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
-    decision = await enforce_assessment_policy(
+    eng_loaded = await assessment.load_engagement_with_scope(db, engagement.id) or engagement
+    decision = await assessment.enforce_assessment_policy(
         db, user, engagement, targets, scope_engagement=eng_loaded, source="api.v1"
     )
 
-    run = await enqueue_assessment_run(
+    result = await assessment.enqueue_assessment_run_with_idempotency(
         db,
         user=user,
         engagement=engagement,
@@ -252,9 +271,11 @@ async def v1_create_run(
         targets=targets,
         params=dict(payload.params or {}),
         policy_decision=decision,
+        idempotency_key_hash=key_hash,
     )
+    run = result.run
 
-    if inline_execution_enabled():
+    if not result.replayed and assessment.inline_execution_enabled():
         try:
             from anomaly_worker.executor import execute_run
 
@@ -265,7 +286,13 @@ async def v1_create_run(
             pass
 
     return _envelope(
-        request, {"id": str(run.id), "status": run.status.value, "scope_warning": run.scope_warning}
+        request,
+        {
+            "id": str(run.id),
+            "status": run.status.value,
+            "scope_warning": run.scope_warning,
+            "idempotent_replay": result.replayed,
+        },
     )
 
 

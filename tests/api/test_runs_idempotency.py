@@ -204,3 +204,24 @@ async def test_duplicate_race_reuses_existing_run(client, db_session, monkeypatc
     assert replay.json()["id"] == str(existing.id)
     assert replay.json()["idempotent_replay"] is True
     assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_v1_replay_reuses_run_in_envelope(client, db_session):
+    pt, eng = await _seed_engagement(db_session, "v1-replay@example.com")
+    headers = {
+        "Authorization": f"Bearer {create_access_token(pt.id, ['pentester'])}",
+        "Idempotency-Key": "v1-client-key",
+    }
+    body = {"tool": "stub", "targets": ["allowed.test"], "params": {}}
+
+    first = await client.post(f"/api/v1/engagements/{eng.id}/runs", headers=headers, json=body)
+    second = await client.post(f"/api/v1/engagements/{eng.id}/runs", headers=headers, json=body)
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert second.json()["success"] is True
+    assert second.json()["data"]["id"] == first.json()["data"]["id"]
+    assert second.json()["data"]["idempotent_replay"] is True
+    runs = (await db_session.scalars(select(Run).where(Run.engagement_id == eng.id))).all()
+    assert len(runs) == 1
