@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from anomaly_core.assessment_idempotency import (
+    hash_idempotency_key,
+    normalize_idempotency_key,
+)
 from anomaly_core.audit import AuditService
 from anomaly_core.execution import build_execution_manifest
 from anomaly_core.models import Engagement, Run, RunStatus, Scope, User
 from anomaly_core.policy import PolicyDecision, evaluate_assessment_request
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,6 +30,54 @@ async def load_engagement_with_scope(db: AsyncSession, engagement_id: UUID) -> E
         return res.scalar_one_or_none()
     except Exception:
         return await db.get(Engagement, engagement_id)
+
+
+@dataclass(frozen=True)
+class IdempotentRunResult:
+    run: Run
+    replayed: bool = False
+
+
+def parse_idempotency_key(raw: str | None) -> str | None:
+    key = normalize_idempotency_key(raw)
+    return hash_idempotency_key(key) if key is not None else None
+
+
+async def find_idempotent_run(
+    db: AsyncSession,
+    *,
+    engagement_id: UUID,
+    user_id: UUID,
+    key_hash: str,
+) -> Run | None:
+    return await db.scalar(
+        select(Run).where(
+            Run.engagement_id == engagement_id,
+            Run.user_id == user_id,
+            Run.idempotency_key_hash == key_hash,
+        )
+    )
+
+
+async def record_idempotent_replay(
+    db: AsyncSession,
+    *,
+    user: User,
+    engagement: Engagement,
+    run: Run,
+    key_hash: str,
+) -> None:
+    await AuditService.log(
+        actor_id=getattr(user, "id", None),
+        action="run.idempotent_replay",
+        resource_type="run",
+        resource_id=run.id,
+        engagement_id=engagement.id,
+        organization_id=getattr(engagement, "organization_id", None),
+        metadata={"idempotency_key_hash": key_hash, "run_id": str(run.id)},
+        db=db,
+    )
+    await db.commit()
 
 
 async def record_assessment_policy_decision(
@@ -86,6 +140,7 @@ async def enqueue_assessment_run(
     enqueue_action: str = "run.enqueue",
     enqueue_metadata: dict[str, Any] | None = None,
     policy_decision: PolicyDecision | None = None,
+    idempotency_key_hash: str | None = None,
     commit: bool = True,
 ) -> Run:
     params = dict(params or {})
@@ -97,6 +152,7 @@ async def enqueue_assessment_run(
         organization_id=getattr(engagement, "organization_id", None),
         engagement_id=engagement.id,
         user_id=getattr(user, "id", None),
+        idempotency_key_hash=idempotency_key_hash,
         tool=tool,
         status=RunStatus.queued,
         scope_warning=False,
@@ -136,6 +192,53 @@ async def enqueue_assessment_run(
         await db.commit()
         await db.refresh(run)
     return run
+
+
+async def enqueue_assessment_run_with_idempotency(
+    db: AsyncSession,
+    *,
+    user: User,
+    engagement: Engagement,
+    tool: str,
+    targets: list[str],
+    idempotency_key_hash: str | None,
+    policy_decision: PolicyDecision,
+    params: dict[str, Any] | None = None,
+) -> IdempotentRunResult:
+    try:
+        run = await enqueue_assessment_run(
+            db,
+            user=user,
+            engagement=engagement,
+            tool=tool,
+            targets=targets,
+            params=params,
+            policy_decision=policy_decision,
+            idempotency_key_hash=idempotency_key_hash,
+            commit=False,
+        )
+        await db.commit()
+        await db.refresh(run)
+        return IdempotentRunResult(run=run)
+    except IntegrityError:
+        await db.rollback()
+        if idempotency_key_hash is None:
+            raise
+        # Rollback expires all ORM instances; reload the ones the replay audit needs.
+        await db.refresh(engagement)
+        await db.refresh(user)
+        existing = await find_idempotent_run(
+            db,
+            engagement_id=engagement.id,
+            user_id=user.id,
+            key_hash=idempotency_key_hash,
+        )
+        if existing is None:
+            raise
+        await record_idempotent_replay(
+            db, user=user, engagement=engagement, run=existing, key_hash=idempotency_key_hash
+        )
+        return IdempotentRunResult(run=existing, replayed=True)
 
 
 def inline_execution_enabled() -> bool:

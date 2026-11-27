@@ -3,18 +3,14 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
+from anomaly_core.assessment_idempotency import InvalidIdempotencyKey
 from anomaly_core.db import SessionLocal
 from anomaly_core.models import Engagement, RoleName, Run
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
-from anomaly_api.assessment import (
-    enforce_assessment_policy,
-    enqueue_assessment_run,
-    inline_execution_enabled,
-    load_engagement_with_scope,
-)
+from anomaly_api import assessment
 from anomaly_api.deps import CurrentUser, DbSession, require_engagement_access
 from anomaly_api.schemas.engagement import TargetResponse  # noqa: F401
 from anomaly_api.tenancy import (
@@ -35,6 +31,7 @@ class RunResponse(BaseModel):
     id: UUID
     status: str
     scope_warning: bool
+    idempotent_replay: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -62,6 +59,7 @@ async def list_runs(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_run(
+    request: Request,
     engagement: Annotated[
         Engagement, Depends(require_engagement_access("engagement_id", min_role=RoleName.pentester))
     ],
@@ -69,13 +67,30 @@ async def create_run(
     user: CurrentUser,
     db: DbSession,
 ):
+    try:
+        key_hash = assessment.parse_idempotency_key(request.headers.get("idempotency-key"))
+    except InvalidIdempotencyKey as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if key_hash is not None:
+        existing = await assessment.find_idempotent_run(
+            db, engagement_id=engagement.id, user_id=user.id, key_hash=key_hash
+        )
+        if existing is not None:
+            await assessment.record_idempotent_replay(
+                db, user=user, engagement=engagement, run=existing, key_hash=key_hash
+            )
+            return RunResponse.model_validate(existing).model_copy(
+                update={"idempotent_replay": True}
+            )
+
     targets = list(payload.targets or [])
-    eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
-    decision = await enforce_assessment_policy(
+    eng_loaded = await assessment.load_engagement_with_scope(db, engagement.id) or engagement
+    decision = await assessment.enforce_assessment_policy(
         db, user, engagement, targets, scope_engagement=eng_loaded, source="api.legacy"
     )
 
-    run = await enqueue_assessment_run(
+    result = await assessment.enqueue_assessment_run_with_idempotency(
         db,
         user=user,
         engagement=engagement,
@@ -83,9 +98,11 @@ async def create_run(
         targets=targets,
         params=dict(payload.params or {}),
         policy_decision=decision,
+        idempotency_key_hash=key_hash,
     )
+    run = result.run
 
-    if inline_execution_enabled():
+    if assessment.inline_execution_enabled():
         try:
             from anomaly_worker.executor import execute_run
 
@@ -94,7 +111,7 @@ async def create_run(
         except Exception:  # nosec B110 - inline run failures must not break enqueue response
             pass
 
-    return RunResponse.model_validate(run)
+    return RunResponse.model_validate(run).model_copy(update={"idempotent_replay": result.replayed})
 
 
 @router.get("/api/runs/{run_id}", response_model=RunResponse)
