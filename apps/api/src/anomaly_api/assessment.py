@@ -56,7 +56,7 @@ async def enforce_assessment_policy(
     *,
     scope_engagement: Engagement | None = None,
     source: str | None = None,
-) -> None:
+) -> PolicyDecision:
     decision = evaluate_assessment_request(
         engagement, targets, scope_engagement=scope_engagement or engagement
     )
@@ -64,7 +64,7 @@ async def enforce_assessment_policy(
         db, user, engagement, decision, source=source
     )
     if decision.allowed:
-        return
+        return decision
     detail = (
         "Engagement not approved for assessment"
         if decision.reason == "engagement_not_approved"
@@ -85,6 +85,7 @@ async def enqueue_assessment_run(
     manifest_params: dict[str, Any] | None = None,
     enqueue_action: str = "run.enqueue",
     enqueue_metadata: dict[str, Any] | None = None,
+    policy_decision: PolicyDecision | None = None,
     commit: bool = True,
 ) -> Run:
     params = dict(params or {})
@@ -112,7 +113,7 @@ async def enqueue_assessment_run(
         tool=tool,
         targets=list(targets),
         params=dict(manifest_params),
-        policy_decision={"allowed": True, "reason": None},
+        policy_decision=(policy_decision or PolicyDecision(allowed=True)).to_metadata(),
     )
     run.params = {**stored_params, "execution_manifest": manifest.to_dict()}
 

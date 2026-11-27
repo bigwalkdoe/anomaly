@@ -10,6 +10,7 @@ from anomaly_core.models import (
     EngagementStatus,
     Role,
     RoleName,
+    Run,
     Scope,
     ScopeEntry,
     ScopeEntryKind,
@@ -125,6 +126,11 @@ async def test_allowed_assessment_records_policy_allowed_audit(client, db_sessio
     )
 
     assert response.status_code == 202
+    run = await db_session.scalar(select(Run).where(Run.engagement_id == eng.id))
+    assert run is not None
+    execution_policy = run.params["execution_manifest"]["execution_policy"]
+    assert execution_policy["allowed"] is True
+    assert execution_policy["targets"] == ["allowed.test"]
     log = await db_session.scalar(
         select(AuditLog).where(
             AuditLog.engagement_id == eng.id, AuditLog.action == "policy.allowed"

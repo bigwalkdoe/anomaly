@@ -71,7 +71,7 @@ async def create_run(
 ):
     targets = list(payload.targets or [])
     eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
-    await enforce_assessment_policy(
+    decision = await enforce_assessment_policy(
         db, user, engagement, targets, scope_engagement=eng_loaded, source="api.legacy"
     )
 
@@ -82,6 +82,7 @@ async def create_run(
         tool=payload.tool,
         targets=targets,
         params=dict(payload.params or {}),
+        policy_decision=decision,
     )
 
     if inline_execution_enabled():

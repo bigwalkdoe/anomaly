@@ -138,11 +138,7 @@ async def execute_run(db: AsyncSession, run_id: UUID, runner: Any = None) -> Run
             resource_id=run.id,
             engagement_id=run.engagement_id,
             organization_id=getattr(engagement, "organization_id", None),
-            metadata={
-                **(decision.metadata or {}),
-                "reason": decision.reason,
-                "op": "assessment.execute",
-            },
+            metadata=decision.to_metadata(op="assessment.execute"),
             db=db,
         )
         await db.commit()

@@ -245,7 +245,9 @@ async def execute_playbook(
     targets = [str(t) for t in targets]
 
     eng_loaded = await load_engagement_with_scope(db, engagement.id) or engagement
-    await enforce_assessment_policy(db, user, engagement, targets, scope_engagement=eng_loaded)
+    decision = await enforce_assessment_policy(
+        db, user, engagement, targets, scope_engagement=eng_loaded, source="playbook"
+    )
     await AuditService.log(
         actor_id=user.id,
         action="playbook.execute",
@@ -285,6 +287,7 @@ async def execute_playbook(
                 "playbook_id": str(playbook.id),
                 "step_id": str(step.id),
             },
+            policy_decision=decision,
             commit=False,
         )
         run_ids.append(run.id)

@@ -307,6 +307,8 @@ async def test_out_of_scope_target_fails_before_runner_execution(db_session):
     assert runner.specs == []
     audit = await _denied_audit(db_session, run)
     assert audit.metadata["reason"] == "out_of_scope"
+    assert audit.metadata["allowed"] is False
+    assert audit.metadata["has_warning"] is True
     assert "evil.com" in audit.metadata["out_of_scope"]
     evidence = await db_session.scalar(select(Evidence).where(Evidence.run_id == run.id))
     assert evidence is None

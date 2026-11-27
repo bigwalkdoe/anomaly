@@ -91,6 +91,10 @@ async def test_dispatch_due_schedule_enqueues_run_and_advances(db_session):
     assert run.params["ports"] == "80"
     assert isinstance(run.params.get("execution_manifest"), dict)
     assert run.params["execution_manifest"]["run_id"] == str(run.id)
+    execution_policy = run.params["execution_manifest"]["execution_policy"]
+    assert execution_policy["allowed"] is True
+    assert execution_policy["reason"] is None
+    assert execution_policy["targets"] == ["example.com"]
 
     await db_session.refresh(sched)
     assert sched.next_run_at is not None
@@ -146,6 +150,38 @@ async def test_dispatch_policy_denied_skips_and_advances(db_session):
     ).all()
     assert "policy.denied" in actions
     assert "schedule.dispatch_denied" in actions
+
+
+@pytest.mark.asyncio
+async def test_dispatch_out_of_scope_denial_records_scope_context(db_session):
+    owner = await _seed_admin(db_session, "sched-scope@example.com")
+    eng = await _seed_engagement(db_session, owner, approved=True)
+    now = datetime.now(UTC)
+    sched = CronSchedule(
+        engagement_id=eng.id,
+        cron_expression="*/5 * * * *",
+        tool="nmap",
+        targets=["evil.example.net"],
+        params={},
+        is_active=True,
+        next_run_at=now - timedelta(minutes=1),
+    )
+    db_session.add(sched)
+    await db_session.commit()
+
+    results = await dispatch_due_schedules(db_session, now=now)
+
+    assert results[0].status == "skipped"
+    audit = await db_session.scalar(
+        select(AuditLog).where(
+            AuditLog.engagement_id == eng.id, AuditLog.action == "policy.denied"
+        )
+    )
+    assert audit is not None
+    assert audit.metadata["allowed"] is False
+    assert audit.metadata["reason"] == "out_of_scope"
+    assert audit.metadata["out_of_scope"] == ["evil.example.net"]
+    assert audit.metadata["has_warning"] is True
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from anomaly_core.audit import AuditService
 from anomaly_core.execution import build_execution_manifest
 from anomaly_core.models import CronSchedule, Engagement, Run, RunStatus, Scope, User
-from anomaly_core.policy import evaluate_assessment_request
+from anomaly_core.policy import PolicyDecision, evaluate_assessment_request
 
 
 @dataclass
@@ -59,6 +59,7 @@ async def _enqueue_scheduled_run(
     schedule: CronSchedule,
     targets: list[str],
     params: dict[str, Any],
+    policy_decision: PolicyDecision,
 ) -> Run:
     stored_params = dict(params)
     stored_params["targets"] = list(targets)
@@ -81,7 +82,7 @@ async def _enqueue_scheduled_run(
         tool=schedule.tool,
         targets=list(targets),
         params=dict(manifest_params),
-        policy_decision={"allowed": True, "reason": None},
+        policy_decision=policy_decision.to_metadata(source="schedule"),
     )
     run.params = {**stored_params, "execution_manifest": manifest.to_dict()}
 
@@ -220,7 +221,7 @@ async def dispatch_due_schedules(
                     resource_id=engagement.id,
                     engagement_id=engagement.id,
                     organization_id=getattr(engagement, "organization_id", None),
-                    metadata={**(decision.metadata or {}), "source": "schedule"},
+                    metadata=decision.to_metadata(source="schedule"),
                     db=db,
                 )
                 schedule.next_run_at = compute_next_run_at(schedule.cron_expression, base=now)
@@ -259,6 +260,7 @@ async def dispatch_due_schedules(
                 schedule=schedule,
                 targets=targets,
                 params=params,
+                policy_decision=decision,
             )
 
             schedule.next_run_at = compute_next_run_at(schedule.cron_expression, base=now)
