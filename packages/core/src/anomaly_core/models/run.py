@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -40,6 +41,14 @@ class RunStatus(StrEnum):
 
 class Run(Base):
     __tablename__ = "runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "engagement_id",
+            "user_id",
+            "idempotency_key_hash",
+            name="uq_runs_engagement_user_idempotency",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -56,6 +65,9 @@ class Run(Base):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    idempotency_key_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
     )
     tool: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     target_ids: Mapped[list[Any]] = mapped_column(JSON, default=list, nullable=False)
