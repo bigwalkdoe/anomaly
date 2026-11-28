@@ -33,7 +33,7 @@ Each box requires a linked artifact in the release record: command output, a con
 
 ### Execution and evidence
 
-- [ ] `RUNNER_MODE` and `ANOMALY_INLINE_RUNS` are unset or disabled in production; evidence shows runs use the isolated runner path.
+- [ ] `ANOMALY_RUNNER=docker` is set for the worker, and `RUNNER_MODE` and `ANOMALY_INLINE_RUNS` are unset or disabled in production; evidence shows runs use the isolated runner path.
 - [ ] Runner network isolation is verified: `ANOMALY_RUNNER_NETWORK` is `none` or an explicitly reviewed restricted network; link the runner config.
 - [ ] Scope and policy decisions are verified for a sample run: out-of-scope targets are denied/logged and audit events are present; link the audit extract.
 - [ ] Evidence objects have SHA/provenance metadata and report traceability is present in the sampled run; link the evidence/report records.

@@ -49,6 +49,8 @@ Production compose uses Docker secrets and binds to:
 - Redis: internal only (no host publish)
 - MinIO: internal only (no host publish)
 
+Production compose sets `CORS_ORIGINS`, but `CORS_ORIGINS is not read by the API`; set `ANOMALY_CORS_ORIGINS` (or `CORS_ALLOW_ORIGINS`) explicitly. It also leaves `ANOMALY_RUNNER` unset, so the worker uses the fake runner; set `ANOMALY_RUNNER=docker` in the worker environment before using production compose for real assessments.
+
 ### Option 2: Kubernetes (Helm)
 
 ```bash

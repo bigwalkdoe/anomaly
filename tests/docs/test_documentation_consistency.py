@@ -75,3 +75,14 @@ def test_current_baseline_docs_are_not_stale():
         "NEXT_PUBLIC_API_URL",
     ):
         assert token in deployment
+
+
+def test_production_config_docs_warn_about_ignored_and_default_settings():
+    deployment = _doc("docs/DEPLOYMENT_GUIDE.md")
+    readiness = _doc("docs/PRODUCTION_READINESS.md")
+    readme = _doc("README.md")
+
+    assert "CORS_ORIGINS is not read by the API" in deployment
+    assert "ANOMALY_RUNNER=docker" in deployment
+    assert "ANOMALY_RUNNER=docker" in readiness
+    assert "pytest -q tests/api tests/core tests/ai tests/tools tests/security tests/docs" in readme

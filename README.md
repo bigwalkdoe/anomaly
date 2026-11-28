@@ -155,7 +155,7 @@ ruff check .
 mypy packages apps
 
 # Tests (configure DB/services as needed; targeted example)
-python3 -m pytest -q tests/api tests/core tests/tools tests/reporting
+python3 -m pytest -q tests/api tests/core tests/ai tests/tools tests/security tests/docs
 ```
 
 CI runs lint, typecheck, tests, Docker/build checks, web checks, Bandit, dependency scan, and gitleaks on pushes and pull requests.
