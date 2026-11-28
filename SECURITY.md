@@ -101,6 +101,8 @@ This document outlines security hardening practices for the Anomaly platform.
 
 ## Production Checklist
 
+The canonical release gate is the [Production Readiness Checklist](docs/PRODUCTION_READINESS.md). It records evidence for each gate; use it for release approval. The summary below highlights security controls that most often drift.
+
 - [ ] Change all default passwords/secrets
 - [ ] Configure strong JWT secret
 - [ ] Enable HTTPS/TLS

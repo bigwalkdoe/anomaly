@@ -2,6 +2,8 @@
 
 This guide covers deploying Anomaly in various environments.
 
+Before deploying beyond local development, complete the [Production Readiness Checklist](PRODUCTION_READINESS.md) and record evidence for every gate.
+
 ## Prerequisites
 
 - Docker and Docker Compose

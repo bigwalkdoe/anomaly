@@ -166,6 +166,7 @@ CI runs lint, typecheck, tests, Docker/build checks, web checks, Bandit, depende
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md)
 - [API Guide](docs/API_GUIDE.md)
 - [Security Policy](SECURITY.md)
+- [Production Readiness Checklist](docs/PRODUCTION_READINESS.md)
 - [Task Tracker](TASKS.md)
 - [Specs & Plans](docs/superpowers/)
 
