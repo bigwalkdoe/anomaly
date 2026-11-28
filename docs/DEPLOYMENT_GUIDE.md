@@ -127,16 +127,28 @@ arq anomaly_worker.main:WorkerSettings
 | Variable | Description | Default |
 |----------|-------------|---------|
 | DATABASE_URL | PostgreSQL connection string | - |
+| POSTGRES_PASSWORD | PostgreSQL password used by production compose | - (required in production) |
 | REDIS_URL | Redis connection string | - |
+| REDIS_PASSWORD | Redis password used by production compose | - (required in production) |
 | JWT_SECRET | Secret for JWT signing | - |
 | JWT_ACCESS_TTL_MIN | Access token TTL in minutes | 15 |
 | JWT_REFRESH_TTL_DAYS | Refresh token TTL in days | 7 |
 | MINIO_ENDPOINT | MinIO host:port | localhost:9000 |
 | MINIO_ACCESS_KEY | MinIO access key | minioadmin |
 | MINIO_SECRET_KEY | MinIO secret key | minioadmin |
+| MINIO_ROOT_USER | MinIO root user used by production compose | - (required in production) |
+| MINIO_ROOT_PASSWORD | MinIO root password used by production compose | - (required in production) |
 | MINIO_BUCKET | Evidence bucket name | anomaly-evidence |
+| ANOMALY_CORS_ORIGINS | Comma-separated trusted browser origins (fallback: `CORS_ALLOW_ORIGINS`) | `*` (must be restricted in production) |
+| ANOMALY_METRICS_AUTH_REQUIRED | Require admin authentication for `/api/metrics` | `false` (set `true` in production) |
+| MAX_UPLOAD_SIZE_BYTES | Maximum evidence upload size in bytes | 52428800 (50 MB) |
 | RUNNER_IMAGE | Container runner image | anomaly-runner:dev |
-| RUNNER_NETWORK | Docker network name | anomaly-net |
+| ANOMALY_RUNNER | Runner backend (`fake` or `docker`) | fake |
+| ANOMALY_RUNNER_NETWORK | Runner container network | none |
+| RUNNER_NETWORK | Compose/Helm runner network name | anomaly-net |
+| RUNNER_MODE | Inline execution switch — dev/test only, never set in production | unset |
+| ANOMALY_INLINE_RUNS | Inline execution switch (`1` enables) — dev/test only, never set in production | unset |
+| NEXT_PUBLIC_API_URL | Browser-facing API origin for the web UI | http://localhost:20101 |
 
 ## Security Considerations
 

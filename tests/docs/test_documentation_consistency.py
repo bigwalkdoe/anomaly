@@ -48,3 +48,30 @@ def test_api_guide_documents_idempotency_and_v1_contract():
         assert token in api_guide
     assert "token param or Authorization: Bearer header" in api_guide
     assert "Admin only" in api_guide
+
+
+def test_current_baseline_docs_are_not_stale():
+    tasks = _doc("TASKS.md")
+    readme = _doc("README.md")
+    security = _doc("SECURITY.md")
+    deployment = _doc("docs/DEPLOYMENT_GUIDE.md")
+
+    assert "_Last updated: 2026-11-28" in tasks
+    assert "Current Alembic head: `b2c3d4e5f6a7`" in tasks
+    assert "Organization/Workspace foundation exists" in readme
+
+    for token in (
+        "ANOMALY_METRICS_AUTH_REQUIRED",
+        "MAX_UPLOAD_SIZE_BYTES",
+        "PRODUCTION_READINESS.md",
+    ):
+        assert token in security
+
+    for token in (
+        "ANOMALY_CORS_ORIGINS",
+        "ANOMALY_METRICS_AUTH_REQUIRED",
+        "MAX_UPLOAD_SIZE_BYTES",
+        "RUNNER_MODE",
+        "NEXT_PUBLIC_API_URL",
+    ):
+        assert token in deployment

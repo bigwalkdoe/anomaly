@@ -1,6 +1,8 @@
 # Anomaly Task List
 
-_Last updated: 2026-11-23 (SDD hardening batch: executor guardrail tests, traceability tests, no-leak parity sweep)_
+_Last updated: 2026-11-28 (assessment request idempotency, docs consistency, production readiness)_
+
+Current baseline: Current Alembic head: `b2c3d4e5f6a7` (single head). Verification set: `ruff check .`, `python3 -m mypy packages apps`, and `pytest -q tests/api tests/core tests/ai tests/tools tests/security tests/docs`.
 
 ## P0 — Correctness, security, and release blockers
 

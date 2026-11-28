@@ -101,8 +101,11 @@ This document outlines security hardening practices for the Anomaly platform.
 
 ## Production Checklist
 
-The canonical release gate is the [Production Readiness Checklist](docs/PRODUCTION_READINESS.md). It records evidence for each gate; use it for release approval. The summary below highlights security controls that most often drift.
+The canonical release gate is the [Production Readiness Checklist](docs/PRODUCTION_READINESS.md). It records evidence for each gate; use it for release approval. The summary below highlights security controls that most often drift. Link every completed item to evidence in the canonical checklist; do not mark a gate complete from this summary alone.
 
+- [ ] Set `ANOMALY_METRICS_AUTH_REQUIRED=true` and verify `/api/metrics` rejects anonymous access
+- [ ] Set `MAX_UPLOAD_SIZE_BYTES` to the approved limit and verify oversized uploads are rejected
+- [ ] Prefer `Authorization: Bearer` for WebSocket clients; the token param remains available for browser clients
 - [ ] Change all default passwords/secrets
 - [ ] Configure strong JWT secret
 - [ ] Enable HTTPS/TLS

@@ -52,11 +52,11 @@ The goal is simple: every assessment action should be attributable, scoped, poli
 
 Anomaly is intentionally honest about what is not done yet:
 
-- **Tenancy depth** — complete Organization/Workspace model and consistent server-side enforcement across APIs, WebSockets, exports, and workers.
-- **Complete governed execution** — approvals/policy decision coverage across every execution entry point, full job lifecycle controls, and hardened isolated runner containment/limits.
-- **Evidence/report integrity** — comprehensive object-store checksum verification, retention enforcement wiring, and fully verifiable end-to-end traceability.
+- **Tenancy depth** — Organization/Workspace foundation exists, but consistent server-side enforcement across every API, WebSocket, export, and worker surface is still incomplete.
+- **Complete governed execution** — approvals/policy/manifest/enqueue controls and worker-side re-validation are shipped in supported flows; approval coverage across every execution entry point, full job lifecycle controls, and hardened isolated runner containment/limits remain.
+- **Evidence/report integrity** — SHA/provenance metadata, evidence integrity endpoints, and report traceability work in supported flows; comprehensive object-store checksum verification, retention enforcement wiring, and fully verifiable end-to-end traceability remain.
 - **Platform breadth** — asset intelligence, incident/defensive workflows, full vulnerability lifecycle, workflow engine, AI sessions/metering/policy-gated actions, compliance mappings, billing/entitlements.
-- **Production hardening** — session/browser hardening, dependency/security remediation SLAs, staging/monitoring/backup-recovery automation, authenticated runtime QA.
+- **Production hardening** — CSP, metrics auth, WS token handling, upload limits, runner isolation defaults, tenant/no-leak checks, and request idempotency are in place; session/browser hardening, dependency/security remediation SLAs, staging/monitoring/backup-recovery automation, and authenticated runtime QA remain.
 
 ## Quick start
 
@@ -184,7 +184,7 @@ See [SECURITY.md](SECURITY.md) for the security policy and reporting process. If
 
 1. **Stabilization** — keep migration, lint/type/test parity green; keep CI/security gates actionable.
 2. **Governed vertical slice** — tenant-aware, policy-gated, scope-validated execution with approvals, evidence integrity/provenance, and traceable reporting.
-3. **Tenancy & enforcement** — complete Organization/Workspace model and server-side enforcement across API, WebSocket, exports, and workers.
+3. **Tenancy & enforcement** — enforce the existing Organization/Workspace foundation consistently across API, WebSocket, exports, and workers.
 4. **Execution hardening** — real isolated runner containment, limits, and policy-before-execution controls.
 5. **Platform expansion** — asset intelligence, defensive workflows, workflow engine, richer AI governance, compliance outputs, and commercial/entitlement model.
 
