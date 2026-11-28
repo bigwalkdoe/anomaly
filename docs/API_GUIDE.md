@@ -26,6 +26,10 @@ curl -X POST http://localhost:20101/api/auth/refresh \
 
 ## Endpoints
 
+### v1 response contract
+
+Additive `/api/v1` responses use the envelope `{"success": true, "data": ..., "meta": {"request_id": "..."}}`. `data` carries the resource payload and `meta.request_id` is the correlation id. Run creation includes `data.idempotent_replay: true` on a replayed `Idempotency-Key`; legacy `/api/*` run responses place `idempotent_replay` at the top level.
+
 ### Authentication
 
 | Method | Endpoint | Description | Auth |
@@ -97,6 +101,8 @@ Run statuses: `queued`, `running`, `succeeded`, `failed`, `cancelled`
 
 Available tools: `nmap`, `nuclei`, `ffuf`, `sqlmap`, `httpx`, `stub`
 
+`POST /api/engagements/{id}/runs` accepts an optional `Idempotency-Key` header. Keys are trimmed, must be 1–255 characters, and invalid values return `400`. Retries with the same key by the same user and engagement return the original run with `202` and `idempotent_replay: true`; no duplicate enqueue or inline execution occurs.
+
 ### Playbooks
 
 | Method | Endpoint | Description | Auth |
@@ -131,8 +137,8 @@ Use API keys in the `Authorization` header: `Authorization: Bearer <api_key>`
 
 | Endpoint | Description | Auth |
 |----------|-------------|------|
-| WS `/api/ws/runs/{run_id}` | Stream run logs | Yes (token param) |
-| WS `/api/ws/notifications` | Receive notifications | Yes (token param) |
+| WS `/api/ws/runs/{run_id}` | Stream run logs | Yes (token param or Authorization: Bearer header) |
+| WS `/api/ws/notifications` | Receive notifications | Yes (token param or Authorization: Bearer header) |
 
 ### Audit
 
@@ -162,8 +168,8 @@ Use API keys in the `Authorization` header: `Authorization: Bearer <api_key>`
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/api/tags` | List tags | Yes |
-| POST | `/api/tags` | Create tag | Yes |
+| GET | `/api/tags` | List tags | Admin only |
+| POST | `/api/tags` | Create tag | Admin only |
 
 ### Webhooks
 
@@ -204,7 +210,7 @@ Use API keys in the `Authorization` header: `Authorization: Bearer <api_key>`
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/api/metrics` | Prometheus metrics | Yes |
+| GET | `/api/metrics` | Prometheus metrics | Yes; admin auth is required when `ANOMALY_METRICS_AUTH_REQUIRED` is enabled |
 
 ### Health
 

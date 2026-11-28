@@ -37,3 +37,14 @@ def test_production_readiness_checklist_is_canonical_and_linked():
 
     for path in ("README.md", "SECURITY.md", "docs/DEPLOYMENT_GUIDE.md"):
         assert "PRODUCTION_READINESS.md" in _doc(path)
+
+
+def test_api_guide_documents_idempotency_and_v1_contract():
+    api_guide = _doc("docs/API_GUIDE.md")
+
+    assert "Idempotency-Key" in api_guide
+    assert "idempotent_replay" in api_guide
+    for token in ("success", "data", "meta", "request_id"):
+        assert token in api_guide
+    assert "token param or Authorization: Bearer header" in api_guide
+    assert "Admin only" in api_guide
